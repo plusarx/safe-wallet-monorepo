@@ -2,6 +2,5 @@
   "installCommand": "corepack enable && yarn install",
   "buildCommand": "yarn workspace @safe-global/web build",
   "outputDirectory": "apps/web/.next",
-  "framework": "nextjs",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- apps/web packages/store packages/theme packages/utils"
+  "framework": "nextjs"
 }
