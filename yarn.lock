@@ -10596,6 +10596,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@safe-global/safe-core-sdk-types@npm:^5.1.0":
+  version: 5.1.0
+  resolution: "@safe-global/safe-core-sdk-types@npm:5.1.0"
+  dependencies:
+    abitype: "npm:^1.0.2"
+  checksum: 10/2ad129abe2367084c75b906dfa06bc4c2b43413fc00048164168b9fd9336a4ea7494b624d61282963062a20e6c6fe45ac28cd9c16c8b787f26ce19f0d8d054e9
+  languageName: node
+  linkType: hard
+
 "@safe-global/safe-deployments@npm:^1.37.49":
   version: 1.37.49
   resolution: "@safe-global/safe-deployments@npm:1.37.49"
@@ -10768,6 +10777,7 @@ __metadata:
     "@safe-global/api-kit": "npm:^2.4.6"
     "@safe-global/protocol-kit": "npm:^5.2.22"
     "@safe-global/safe-apps-sdk": "npm:^9.1.0"
+    "@safe-global/safe-core-sdk-types": "npm:^5.1.0"
     "@safe-global/safe-deployments": "npm:^1.37.49"
     "@safe-global/safe-modules-deployments": "npm:^2.2.21"
     "@safe-global/store": "workspace:^"
@@ -10819,6 +10829,7 @@ __metadata:
     date-fns: "npm:^4.1.0"
     eslint: "npm:^9.29.0"
     eslint-config-next: "npm:^15.0.4"
+    eslint-config-prettier: "npm:^9.1.0"
     eslint-plugin-no-only-tests: "npm:^3.3.0"
     eslint-plugin-storybook: "npm:^10.1.10"
     eslint-plugin-unused-imports: "npm:^4.1.4"
