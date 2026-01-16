@@ -54,7 +54,6 @@ export default function TradingTerminal() {
 
     // Client selection (multi-select for batch)
     const [clients, setClients] = useState<ClientInfo[]>([])
-    const [batchMode, setBatchMode] = useState(false)
     const [walletTypeFilter, setWalletTypeFilter] = useState<'all' | 'eoa' | 'safe'>('all')
 
     // Trade form
@@ -62,12 +61,11 @@ export default function TradingTerminal() {
     const [tokenIn, setTokenIn] = useState(DEFAULT_TOKEN_LIST[0]) // WETH
     const [tokenOut, setTokenOut] = useState(DEFAULT_TOKEN_LIST[1]) // USDC
     const [amountIn, setAmountIn] = useState('')
-    const [minAmountOut, setMinAmountOut] = useState('')
     const [slippage, setSlippage] = useState('0.5')
 
     // Limit form
     const [newDailyLimit, setNewDailyLimit] = useState('')
-    const [error, setError] = useState<string | null>(null)
+    const [_error, setError] = useState<string | null>(null)
 
     // Hooks
     const { getManagerClients, getDelegation } = useDelegationModule()
@@ -77,7 +75,6 @@ export default function TradingTerminal() {
         executeTrade,
         executeBatchTrade,
         setDailyLimit,
-        getManagerInfo,
         calculateFee,
         getQuote,
     } = useTradingModule()
@@ -86,7 +83,7 @@ export default function TradingTerminal() {
     const [isQuoting, setIsQuoting] = useState(false)
 
     const [successMessage, setSuccessMessage] = useState<string>('')
-    const [estimatedFee, setEstimatedFee] = useState<string>('0')
+    const [_estimatedFee, setEstimatedFee] = useState<string>('0')
 
     // Selected clients for operations
     const selectedClients = clients.filter(c => c.selected)

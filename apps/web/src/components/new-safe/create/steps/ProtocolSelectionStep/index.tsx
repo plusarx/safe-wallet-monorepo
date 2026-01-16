@@ -133,7 +133,6 @@ const ProtocolSelectionStep = ({
     onSubmit,
     onBack,
     data,
-    setDynamicHint,
 }: StepRenderProps<NewSafeFormData> & {
     setDynamicHint: (hints: CreateSafeInfoItem | undefined) => void
 }): ReactElement => {

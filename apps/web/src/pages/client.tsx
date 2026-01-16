@@ -268,7 +268,7 @@ export default function ClientDashboard() {
                     </Box>
                 ) : delegations.length === 0 ? (
                     <Alert severity="info">
-                        You haven't delegated to any managers yet.{' '}
+                        You haven&apos;t delegated to any managers yet.{' '}
                         <Button size="small" onClick={() => router.push('/onboard')}>
                             Get Started
                         </Button>

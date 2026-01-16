@@ -100,7 +100,7 @@ const ORDERS_KEY = 'trading_trigger_orders'
 
 export default function OrderTypes() {
     const [selectedType, setSelectedType] = useState<OrderType>('limit')
-    const [isLoading, setIsLoading] = useState(false)
+    const [isLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState('')
     const [tabValue, setTabValue] = useState(0)

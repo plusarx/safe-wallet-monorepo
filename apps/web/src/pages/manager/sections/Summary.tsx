@@ -157,12 +157,10 @@ export default function Summary() {
             const clientList: ClientInfo[] = []
             let safeCount = 0
             let eoaCount = 0
-            let totalAUM = 0
 
             for (const client of clientResults) {
                 if (!client) continue
                 clientList.push(client)
-                totalAUM += client.totalValue
                 if (client.walletType === 'safe') safeCount++
                 else eoaCount++
             }

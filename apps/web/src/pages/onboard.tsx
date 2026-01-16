@@ -80,7 +80,6 @@ export default function ClientOnboarding() {
         enableModulesAndDelegate,
         getWalletSupportInfo,
         executeBatch,
-        DELEGATOR_CONTRACTS,
     } = useEIP7702()
 
     // Get wallet support info

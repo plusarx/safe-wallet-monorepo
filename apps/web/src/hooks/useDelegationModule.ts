@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Eip1193Provider } from 'ethers';
+
 import { Contract, BrowserProvider } from 'ethers'
 import { DELEGATION_MODULE_ADDRESS, DELEGATION_MODULE_ADDRESSES, DELEGATION_MODULE_ABI, PERMISSION } from '../contracts/DelegationModule'
 
@@ -30,7 +30,7 @@ export function useDelegationModule() {
             throw new Error('No wallet detected')
         }
 
-        const provider = new BrowserProvider(window.ethereum)
+        const provider = new BrowserProvider(window.ethereum as any)
         const network = await provider.getNetwork()
         const chainId = Number(network.chainId)
         const address = DELEGATION_MODULE_ADDRESSES[chainId] || DELEGATION_MODULE_ADDRESSES[11155111]

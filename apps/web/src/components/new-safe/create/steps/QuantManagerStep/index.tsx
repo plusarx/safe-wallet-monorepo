@@ -106,7 +106,6 @@ const QuantManagerStep = ({
     onSubmit,
     onBack,
     data,
-    setDynamicHint,
 }: StepRenderProps<NewSafeFormData> & {
     setDynamicHint: (hints: CreateSafeInfoItem | undefined) => void
 }): ReactElement => {
@@ -119,7 +118,7 @@ const QuantManagerStep = ({
         },
     })
 
-    const { handleSubmit, control, watch, setValue } = formMethods
+    const { handleSubmit, control, watch } = formMethods
 
     const quantEnabled = watch(QuantManagerStepFields.quantEnabled)
     const riskProfile = watch(QuantManagerStepFields.riskProfile)
@@ -205,7 +204,7 @@ const QuantManagerStep = ({
                     {!quantEnabled && (
                         <Box mt={3} p={2} sx={{ background: 'var(--color-background-light)', borderRadius: 2 }}>
                             <Typography variant="body2" color="text.secondary">
-                                <strong>Manual Management:</strong> You'll manage your portfolio manually through the trading interface.
+                                <strong>Manual Management:</strong> You&apos;ll manage your portfolio manually through the trading interface.
                                 You can enable the Asset Manager later from your Safe settings.
                             </Typography>
                         </Box>

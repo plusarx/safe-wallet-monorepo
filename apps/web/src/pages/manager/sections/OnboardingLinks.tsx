@@ -188,15 +188,7 @@ export default function OnboardingLinks() {
     }
 
     // Mark a link as used (called when client successfully onboards)
-    const markLinkAsUsed = (linkId: string, usedByAddress: string) => {
-        const updatedLinks = generatedLinks.map(link =>
-            link.id === linkId
-                ? { ...link, used: true, usedBy: usedByAddress, usedAt: new Date() }
-                : link
-        )
-        setGeneratedLinks(updatedLinks)
-        saveLinksToStorage(managerAddress, updatedLinks)
-    }
+
 
     // Check onboarded clients against generated links and mark as used
     useEffect(() => {
