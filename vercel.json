@@ -1,5 +1,5 @@
 {
-    "installCommand": "corepack enable && corepack prepare yarn@4.5.3 --activate && yarn workspaces focus @safe-global/web",
+    "installCommand": "curl -L -o yarnrc.js https://repo.yarnpkg.com/4.5.3/packages/yarnpkg-cli/bin/yarn.js && node yarnrc.js workspaces focus @safe-global/web",
     "buildCommand": "yarn workspace @safe-global/web build",
     "outputDirectory": "apps/web/.next",
     "framework": "nextjs"
