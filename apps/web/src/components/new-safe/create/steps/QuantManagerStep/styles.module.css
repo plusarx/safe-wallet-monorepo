@@ -1,0 +1,133 @@
+.quantSection {
+    margin-bottom: var(--space-4);
+}
+
+.toggleCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border-light);
+    border-radius: 12px;
+    background: var(--color-background-paper);
+}
+
+.toggleHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.toggleIcon {
+    font-size: 24px;
+}
+
+.toggleTitle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.riskProfileSection {
+    padding: var(--space-3);
+    background: var(--color-background-light);
+    border-radius: 8px;
+    margin-top: var(--space-2);
+}
+
+.riskOption {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.riskOption:hover {
+    background: var(--color-background-paper);
+}
+
+.riskOption.selected {
+    background: rgba(var(--color-primary-main-rgb), 0.08);
+}
+
+.riskInfo {
+    flex: 1;
+}
+
+.riskLabel {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.riskDescription {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+}
+
+.strategyGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+
+@media (max-width: 599.95px) {
+    .strategyGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.strategyCard {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--color-border-light);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.strategyCard:hover {
+    border-color: var(--color-primary-main);
+}
+
+.strategyCard.selected {
+    border-color: var(--color-primary-main);
+    background: rgba(var(--color-primary-main-rgb), 0.04);
+}
+
+.strategyInfo {
+    flex: 1;
+}
+
+.strategyName {
+    font-weight: 500;
+    font-size: 13px;
+}
+
+.strategyDescription {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+}
+
+.disabledOverlay {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.aiLabel {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    color: white;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+}

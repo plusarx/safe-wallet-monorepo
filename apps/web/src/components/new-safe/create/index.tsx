@@ -7,6 +7,8 @@ import type { NamedAddress } from '@/components/new-safe/create/types'
 import type { TxStepperProps } from '@/components/new-safe/CardStepper/useCardStepper'
 import SetNameStep from '@/components/new-safe/create/steps/SetNameStep'
 import OwnerPolicyStep from '@/components/new-safe/create/steps/OwnerPolicyStep'
+import ProtocolSelectionStep from '@/components/new-safe/create/steps/ProtocolSelectionStep'
+import QuantManagerStep from '@/components/new-safe/create/steps/QuantManagerStep'
 import ReviewStep from '@/components/new-safe/create/steps/ReviewStep'
 import { CreateSafeStatus } from '@/components/new-safe/create/steps/StatusStep'
 import { CardStepper } from '@/components/new-safe/CardStepper'
@@ -22,6 +24,7 @@ import { useCurrentChain } from '@/hooks/useChains'
 import type { Chain } from '@safe-global/store/gateway/AUTO_GENERATED/chains'
 import { getLatestSafeVersion } from '@safe-global/utils/utils/chains'
 import { HelpCenterArticle } from '@safe-global/utils/config/constants'
+import type { RiskProfile } from '@/config/pulsarx'
 
 export type NewSafeFormData = {
   name: string
@@ -33,6 +36,11 @@ export type NewSafeFormData = {
   safeAddress?: string
   willRelay?: boolean
   paymentReceiver?: string
+  // PulsarX fields
+  selectedProtocols?: string[]
+  quantEnabled?: boolean
+  riskProfile?: RiskProfile
+  selectedStrategies?: string[]
 }
 
 const staticHints: Record<
@@ -80,6 +88,42 @@ const staticHints: Record<
     ],
   },
   3: {
+    title: 'DeFi Protocol Selection',
+    variant: 'info',
+    steps: [
+      {
+        title: 'Trading Modules',
+        text: 'Each selected protocol will install a dedicated trading module on your Safe Account, enabling seamless DeFi interactions.',
+      },
+      {
+        title: 'Network Compatibility',
+        text: 'Some protocols are only available on specific networks. Unavailable protocols will be grayed out based on your selected networks.',
+      },
+      {
+        title: 'Module Costs',
+        text: 'Installing modules requires a one-time gas fee. You can add or remove protocols later from your Safe settings.',
+      },
+    ],
+  },
+  4: {
+    title: 'AI Portfolio Management',
+    variant: 'info',
+    steps: [
+      {
+        title: 'Asset Manager',
+        text: 'The AI-powered Asset Manager can automate your trading strategies, optimize yields, and rebalance your portfolio automatically.',
+      },
+      {
+        title: 'Risk Profiles',
+        text: 'Choose a risk profile that matches your investment goals. Conservative for stable yields, Moderate for balanced growth, or Aggressive for maximum returns.',
+      },
+      {
+        title: 'Full Control',
+        text: 'You maintain full control over your assets. All Asset Manager actions are executed through your Safe Account with transparent on-chain transactions.',
+      },
+    ],
+  },
+  5: {
     title: 'Safe Account creation',
     variant: 'info',
     steps: [
@@ -89,7 +133,7 @@ const staticHints: Record<
       },
     ],
   },
-  4: {
+  6: {
     title: 'Safe Account usage',
     variant: 'success',
     steps: [
@@ -143,6 +187,32 @@ const CreateSafe = () => {
       ),
     },
     {
+      title: 'Select DeFi Protocols',
+      subtitle: 'Choose which DeFi protocols you want to use with your Safe Account.',
+      render: (data, onSubmit, onBack, setStep) => (
+        <ProtocolSelectionStep
+          setDynamicHint={setDynamicHint}
+          data={data}
+          onSubmit={onSubmit}
+          onBack={onBack}
+          setStep={setStep}
+        />
+      ),
+    },
+    {
+      title: 'Asset Manager',
+      subtitle: 'Optionally enable AI-powered portfolio management for automated trading strategies.',
+      render: (data, onSubmit, onBack, setStep) => (
+        <QuantManagerStep
+          setDynamicHint={setDynamicHint}
+          data={data}
+          onSubmit={onSubmit}
+          onBack={onBack}
+          setStep={setStep}
+        />
+      ),
+    },
+    {
       title: 'Review',
       subtitle:
         "You're about to create a new Safe Account and will have to confirm the transaction with your connected wallet.",
@@ -175,6 +245,11 @@ const CreateSafe = () => {
     owners: [],
     threshold: 1,
     safeVersion: getLatestSafeVersion(chain) as SafeVersion,
+    // PulsarX defaults
+    selectedProtocols: [],
+    quantEnabled: false,
+    riskProfile: 'moderate',
+    selectedStrategies: [],
   }
 
   const onClose = () => {

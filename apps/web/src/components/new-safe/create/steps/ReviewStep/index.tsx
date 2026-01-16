@@ -39,7 +39,7 @@ import { useAppDispatch, useAppSelector } from '@/store'
 import { hasRemainingRelays } from '@/utils/relaying'
 import { isWalletRejection } from '@/utils/wallets'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import { Box, Button, CircularProgress, Divider, Grid, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Chip, CircularProgress, Divider, Grid, Tooltip, Typography } from '@mui/material'
 import { type Chain } from '@safe-global/store/gateway/AUTO_GENERATED/chains'
 import classnames from 'classnames'
 import { useRouter } from 'next/router'
@@ -58,6 +58,7 @@ import { FEATURES, hasFeature } from '@safe-global/utils/utils/chains'
 import { PayMethod } from '@safe-global/utils/features/counterfactual/types'
 import { type TransactionOptions } from '@safe-global/types-kit'
 import { getTotalFeeFormatted } from '@safe-global/utils/hooks/useDefaultGasPrice'
+import { DEFI_PROTOCOLS, RISK_PROFILES, type RiskProfile } from '@/config/pulsarx'
 
 export const NetworkFee = ({
   totalFee,
@@ -86,12 +87,23 @@ export const SafeSetupOverview = ({
   owners,
   threshold,
   networks,
+  selectedProtocols,
+  quantEnabled,
+  riskProfile,
 }: {
   name?: string
   owners: NamedAddress[]
   threshold: number
   networks: Chain[]
+  selectedProtocols?: string[]
+  quantEnabled?: boolean
+  riskProfile?: RiskProfile
 }) => {
+  // Get protocol names from IDs
+  const protocolNames = selectedProtocols
+    ?.map((id) => DEFI_PROTOCOLS.find((p) => p.id === id)?.name)
+    .filter(Boolean) || []
+
   return (
     <Grid container spacing={3}>
       <ReviewRow
@@ -153,6 +165,33 @@ export const SafeSetupOverview = ({
           </Typography>
         }
       />
+      {/* PulsarX Configuration */}
+      {protocolNames.length > 0 && (
+        <ReviewRow
+          name="DeFi Protocols"
+          value={
+            <Box data-testid="review-step-protocols" sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {protocolNames.map((name) => (
+                <Chip key={name} label={name} size="small" variant="outlined" />
+              ))}
+            </Box>
+          }
+        />
+      )}
+      <ReviewRow
+        name="Asset Manager"
+        value={
+          <Typography data-testid="review-step-quant-manager">
+            {quantEnabled ? (
+              <>
+                Enabled ({RISK_PROFILES[riskProfile || 'moderate'].label} risk profile)
+              </>
+            ) : (
+              'Disabled'
+            )}
+          </Typography>
+        }
+      />
     </Grid>
   )
 }
@@ -186,14 +225,14 @@ const ReviewStep = ({ data, onSubmit, onBack, setStep }: StepRenderProps<NewSafe
     () =>
       chain
         ? createNewUndeployedSafeWithoutSalt(
-            data.safeVersion,
-            {
-              owners: data.owners.map((owner) => owner.address),
-              threshold: data.threshold,
-              paymentReceiver: data.paymentReceiver,
-            },
-            chain,
-          )
+          data.safeVersion,
+          {
+            owners: data.owners.map((owner) => owner.address),
+            threshold: data.threshold,
+            paymentReceiver: data.paymentReceiver,
+          },
+          chain,
+        )
         : undefined,
     [chain, data.owners, data.safeVersion, data.threshold, data.paymentReceiver],
   )
@@ -201,9 +240,9 @@ const ReviewStep = ({ data, onSubmit, onBack, setStep }: StepRenderProps<NewSafe
   const safePropsForGasEstimation = useMemo(() => {
     return newSafeProps
       ? {
-          ...newSafeProps,
-          saltNonce: Date.now().toString(),
-        }
+        ...newSafeProps,
+        saltNonce: Date.now().toString(),
+      }
       : undefined
   }, [newSafeProps])
 
@@ -320,10 +359,10 @@ const ReviewStep = ({ data, onSubmit, onBack, setStep }: StepRenderProps<NewSafe
 
       const options: TransactionOptions = isEIP1559
         ? {
-            maxFeePerGas: maxFeePerGas?.toString(),
-            maxPriorityFeePerGas: maxPriorityFeePerGas?.toString(),
-            gasLimit: gasLimit?.toString(),
-          }
+          maxFeePerGas: maxFeePerGas?.toString(),
+          maxPriorityFeePerGas: maxPriorityFeePerGas?.toString(),
+          gasLimit: gasLimit?.toString(),
+        }
         : { gasPrice: maxFeePerGas?.toString(), gasLimit: gasLimit?.toString() }
 
       const onSubmitCallback = async (taskId?: string, txHash?: string) => {
@@ -389,7 +428,15 @@ const ReviewStep = ({ data, onSubmit, onBack, setStep }: StepRenderProps<NewSafe
   return (
     <>
       <Box data-testid="safe-setup-overview" className={layoutCss.row}>
-        <SafeSetupOverview name={data.name} owners={data.owners} threshold={data.threshold} networks={data.networks} />
+        <SafeSetupOverview
+          name={data.name}
+          owners={data.owners}
+          threshold={data.threshold}
+          networks={data.networks}
+          selectedProtocols={data.selectedProtocols}
+          quantEnabled={data.quantEnabled}
+          riskProfile={data.riskProfile}
+        />
       </Box>
       {isCounterfactualEnabled && (
         <>

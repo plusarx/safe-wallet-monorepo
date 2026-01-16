@@ -1,4 +1,5 @@
 import type { NewSafeFormData } from '@/components/new-safe/create'
+import type { RiskProfile } from '@/config/pulsarx'
 
 export type NamedAddress = {
   name: string
@@ -22,3 +23,11 @@ export type PendingSafeData = NewSafeFormData & {
 }
 
 export type PendingSafeByChain = Record<string, PendingSafeData | undefined>
+
+// PulsarX-specific types
+export type PulsarXConfig = {
+  selectedProtocols: string[]
+  quantEnabled: boolean
+  riskProfile: RiskProfile
+  selectedStrategies: string[]
+}
