@@ -240,7 +240,7 @@ export default function OrderTypes() {
                                     tokenIn: tokenInData.address,
                                     tokenOut: tokenOutData.address,
                                     amounts: order.clientAddresses.map(() => order.amountIn),
-                                    minAmountOut: minAmountOut,
+                                    minAmountOut,
                                     feeTier: FEE_TIERS.MEDIUM,
                                     deadline: Math.floor(Date.now() / 1000) + 600,
                                     tokenInDecimals: tokenInData.decimals,

@@ -9,7 +9,6 @@ import type { CreateSafeInfoItem } from '@/components/new-safe/create/CreateSafe
 import layoutCss from '@/components/new-safe/create/styles.module.css'
 import css from './styles.module.css'
 import {
-    DEFI_PROTOCOLS,
     PROTOCOL_CATEGORIES,
     getProtocolsByCategory,
     type Protocol,

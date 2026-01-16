@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { Contract, BrowserProvider, Eip1193Provider, parseUnits, formatUnits } from 'ethers'
+import type { Eip1193Provider} from 'ethers';
+import { Contract, BrowserProvider, parseUnits, formatUnits } from 'ethers'
 
 import {
     TRADING_MODULE_ADDRESSES,

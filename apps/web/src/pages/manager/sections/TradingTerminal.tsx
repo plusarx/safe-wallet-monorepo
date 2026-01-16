@@ -12,7 +12,6 @@ import {
     Select,
     MenuItem,
     FormControl,
-    InputLabel,
     Alert,
     CircularProgress,
     Divider,
@@ -25,12 +24,11 @@ import {
 } from '@mui/material'
 import SwapVertIcon from '@mui/icons-material/SwapVert'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import SettingsIcon from '@mui/icons-material/Settings'
 import GroupIcon from '@mui/icons-material/Group'
-import { useDelegationModule, PERMISSION } from '../../../hooks/useDelegationModule'
-import { useTradingModule, ManagerInfo } from '../../../hooks/useTradingModule'
+import { useDelegationModule } from '../../../hooks/useDelegationModule'
+import { useTradingModule } from '../../../hooks/useTradingModule'
 import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN, TRADING_MODULE_ADDRESSES } from '../../../contracts/TradingModule'
 import { Contract } from 'ethers'
 import useWallet from '@/hooks/wallets/useWallet'

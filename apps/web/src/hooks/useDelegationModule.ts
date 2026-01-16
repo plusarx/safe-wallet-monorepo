@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { Contract, BrowserProvider, Eip1193Provider } from 'ethers'
+import type { Eip1193Provider } from 'ethers';
+import { Contract, BrowserProvider } from 'ethers'
 import { DELEGATION_MODULE_ADDRESS, DELEGATION_MODULE_ADDRESSES, DELEGATION_MODULE_ABI, PERMISSION } from '../contracts/DelegationModule'
 
 declare global {

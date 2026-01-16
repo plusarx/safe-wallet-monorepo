@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react'
 import Safe from '@safe-global/protocol-kit'
-import { BrowserProvider, Eip1193Provider } from 'ethers'
+import type { Eip1193Provider } from 'ethers';
+import { BrowserProvider } from 'ethers'
 import { DELEGATION_MODULE_ADDRESSES } from '../contracts/DelegationModule'
 import { TRADING_MODULE_ADDRESSES } from '../contracts/TradingModule'
-import { MetaTransactionData } from '@safe-global/safe-core-sdk-types'
+import type { MetaTransactionData } from '@safe-global/safe-core-sdk-types'
 
 declare global {
     interface Window {
@@ -54,7 +55,7 @@ export function useSafeSDK() {
             const safe = await Safe.init({
                 provider: window.ethereum as any,
                 signer: signerAddress,
-                safeAddress: safeAddress,
+                safeAddress,
             })
 
             const network = await provider.getNetwork()

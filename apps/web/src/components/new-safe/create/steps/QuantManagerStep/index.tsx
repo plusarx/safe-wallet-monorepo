@@ -2,7 +2,6 @@ import { Box, Button, Checkbox, Divider, Radio, RadioGroup, Switch, Typography }
 import { FormProvider, useForm, Controller } from 'react-hook-form'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import type { ReactElement } from 'react'
-import { useState } from 'react'
 
 import type { StepRenderProps } from '@/components/new-safe/CardStepper/useCardStepper'
 import type { NewSafeFormData } from '@/components/new-safe/create'

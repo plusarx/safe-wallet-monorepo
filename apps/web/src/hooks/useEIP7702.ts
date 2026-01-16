@@ -5,19 +5,14 @@ import {
     createPublicClient,
     encodeFunctionData,
     type Address,
-    keccak256,
-    toRlp,
     toHex,
     hexToNumber,
-    concat,
-    parseAbiItem,
 } from 'viem'
-import { sepolia, arbitrum } from 'viem/chains'
+import { arbitrum } from 'viem/chains'
 import { DELEGATION_MODULE_ADDRESSES, DELEGATION_MODULE_ABI } from '../contracts/DelegationModule'
 import { TRADING_MODULE_ADDRESSES } from '../contracts/TradingModule'
 import {
     DELEGATOR_CONTRACTS,
-    KNOWN_DELEGATORS,
     METAMASK_DELEGATOR_ABI,
     SAFE_LITE_ABI,
     ENABLE_MODULE_ABI
