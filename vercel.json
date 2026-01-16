@@ -1,5 +1,5 @@
 {
-    "installCommand": "corepack enable && yarn workspaces focus @safe-global/web",
+    "installCommand": "npm install -g yarn@4.12.0 && yarn workspaces focus @safe-global/web",
     "buildCommand": "yarn workspace @safe-global/web build",
     "outputDirectory": "apps/web/.next",
     "framework": "nextjs"
