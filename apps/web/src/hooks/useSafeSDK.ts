@@ -1,16 +1,12 @@
 import { useState, useCallback } from 'react'
 import Safe from '@safe-global/protocol-kit'
-import type { Eip1193Provider } from 'ethers';
+
 import { BrowserProvider } from 'ethers'
 import { DELEGATION_MODULE_ADDRESSES } from '../contracts/DelegationModule'
 import { TRADING_MODULE_ADDRESSES } from '../contracts/TradingModule'
 import type { MetaTransactionData } from '@safe-global/safe-core-sdk-types'
 
-declare global {
-    interface Window {
-        ethereum?: Eip1193Provider
-    }
-}
+
 
 export interface SafeSDKState {
     isConnected: boolean
@@ -48,7 +44,7 @@ export function useSafeSDK() {
                 throw new Error('Please install MetaMask')
             }
 
-            const provider = new BrowserProvider(window.ethereum)
+            const provider = new BrowserProvider(window.ethereum as any)
             const signer = await provider.getSigner()
             const signerAddress = await signer.getAddress()
 
@@ -162,7 +158,7 @@ export function useSafeSDK() {
             const safeTransaction = await safeSdk.createTransaction({ transactions })
             const signedTx = await safeSdk.signTransaction(safeTransaction)
             const txResult = await safeSdk.executeTransaction(signedTx)
-            const receipt = await txResult.transactionResponse?.wait()
+            const receipt = await (txResult.transactionResponse as any)?.wait()
 
             setState(prev => ({
                 ...prev,
@@ -210,7 +206,7 @@ export function useSafeSDK() {
 
             const signedTx = await safeSdk.signTransaction(safeTransaction)
             const txResult = await safeSdk.executeTransaction(signedTx)
-            const receipt = await txResult.transactionResponse?.wait()
+            const receipt = await (txResult.transactionResponse as any)?.wait()
 
             return receipt?.hash || 'success'
         } catch (err: any) {
@@ -244,7 +240,7 @@ export function useSafeSDK() {
 
             const signedTx = await safeSdk.signTransaction(safeTransaction)
             const txResult = await safeSdk.executeTransaction(signedTx)
-            const receipt = await txResult.transactionResponse?.wait()
+            const receipt = await (txResult.transactionResponse as any)?.wait()
 
             return receipt?.hash || 'success'
         } catch (err: any) {

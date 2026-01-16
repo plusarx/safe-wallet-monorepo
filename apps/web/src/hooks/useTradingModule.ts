@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react'
-import type { Eip1193Provider} from 'ethers';
 import { Contract, BrowserProvider, parseUnits, formatUnits } from 'ethers'
 
 import {
@@ -11,11 +10,7 @@ import {
     QUOTER_ABI
 } from '../contracts/TradingModule'
 
-declare global {
-    interface Window {
-        ethereum?: Eip1193Provider
-    }
-}
+// Global declaration removed to avoid conflict with definitions.d.ts
 
 export interface TradeParams {
     safe: string
@@ -57,7 +52,7 @@ export function useTradingModule() {
             throw new Error('No wallet detected')
         }
 
-        const provider = new BrowserProvider(window.ethereum)
+        const provider = new BrowserProvider(window.ethereum as any)
         const network = await provider.getNetwork()
         const chainId = Number(network.chainId)
         const address = TRADING_MODULE_ADDRESSES[chainId] || TRADING_MODULE_ADDRESSES[11155111]
@@ -84,7 +79,7 @@ export function useTradingModule() {
                 safe: params.safe,
                 tokenIn: params.tokenIn,
                 tokenOut: params.tokenOut,
-                tokenOut: params.tokenOut,
+
                 amountIn: parseUnits(params.amountIn, params.tokenInDecimals),
                 minAmountOut: parseUnits(params.minAmountOut, params.tokenOutDecimals),
                 feeTier: params.feeTier,
