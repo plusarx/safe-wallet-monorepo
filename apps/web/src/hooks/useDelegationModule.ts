@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import useWallet from '@/hooks/wallets/useWallet'
 
 import { Contract, BrowserProvider } from 'ethers'
 import { DELEGATION_MODULE_ADDRESS, DELEGATION_MODULE_ADDRESSES, DELEGATION_MODULE_ABI, PERMISSION } from '../contracts/DelegationModule'
@@ -24,13 +25,14 @@ export interface Delegation {
 export function useDelegationModule() {
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const wallet = useWallet()
 
     const getContract = useCallback(async (needsSigner = false) => {
-        if (typeof window === 'undefined' || !window.ethereum) {
+        if (!wallet?.provider) {
             throw new Error('No wallet detected')
         }
 
-        const provider = new BrowserProvider(window.ethereum as any)
+        const provider = new BrowserProvider(wallet.provider)
         const network = await provider.getNetwork()
         const chainId = Number(network.chainId)
         const address = DELEGATION_MODULE_ADDRESSES[chainId] || DELEGATION_MODULE_ADDRESSES[11155111]

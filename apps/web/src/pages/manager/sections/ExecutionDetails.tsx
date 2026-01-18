@@ -62,14 +62,13 @@ export default function ExecutionDetails() {
     const { getManagerClients } = useDelegationModule()
 
     const loadExecutions = useCallback(async () => {
-        if (typeof window === 'undefined' || !window.ethereum) return
-        if (!wallet?.address) return
+        if (!wallet?.address || !wallet?.provider) return
 
         setIsLoading(true)
         setError(null)
 
         try {
-            const provider = new BrowserProvider(window.ethereum as any)
+            const provider = new BrowserProvider(wallet.provider)
             const managerAddress = wallet.address
 
             const network = await provider.getNetwork()
