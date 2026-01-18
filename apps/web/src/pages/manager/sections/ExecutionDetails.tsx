@@ -82,7 +82,9 @@ export default function ExecutionDetails() {
             }
 
             // Get client addresses
-            const clients = await getManagerClients(managerAddress)
+            const clientsResult = await getManagerClients(managerAddress)
+            const clients = Array.from(clientsResult)
+
             if (clients.length === 0) {
                 setExecutions([])
                 return
@@ -90,8 +92,11 @@ export default function ExecutionDetails() {
 
             const currentBlock = await provider.getBlockNumber()
             // Query more blocks to ensure we catch all trades
-            // Arbitrum blocks are fast, so we need a larger range
-            const fromBlock = Math.max(0, currentBlock - 500000) // ~1-2 days of history on Arbitrum
+            // Arbitrum blocks are fast (~0.25s). 500k = 1.5 days. 10M = 30 days.
+            const isArbitrum = chainId === 42161
+            // REDUCED LOOKBACK to avoid RPC timeouts/limits while debugging
+            const lookback = isArbitrum ? 2_000_000 : 500_000
+            const fromBlock = Math.max(0, currentBlock - lookback)
 
             const executionRecords: ExecutionRecord[] = []
 
@@ -116,7 +121,10 @@ export default function ExecutionDetails() {
                         tokenContract
                             .queryFilter(tokenContract.filters.Transfer(client, TREASURY), fromBlock, 'latest')
                             .then(events => ({ symbol, decimals: token.decimals, events, client }))
-                            .catch(() => ({ symbol, decimals: token.decimals, events: [], client }))
+                            .catch((err) => {
+                                console.error('DEBUG: ExecDetails query failed', { symbol, client, err })
+                                return { symbol, decimals: token.decimals, events: [], client }
+                            })
                     )
                 }
             }

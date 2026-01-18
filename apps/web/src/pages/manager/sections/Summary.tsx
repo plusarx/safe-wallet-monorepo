@@ -92,60 +92,67 @@ export default function Summary() {
             }
 
             // Get client addresses
-            const clientAddresses = await getManagerClients(managerAddress)
+            const ClientsResult = await getManagerClients(managerAddress)
+            // Fix: Convert Ethers Result proxy to real Array
+            const clientAddresses = Array.from(ClientsResult)
 
             // Approximate ETH price for USD calculation
             const ethPriceUSD = 3300 // You could fetch this from an oracle
 
             // OPTIMIZED: Fetch ALL client details in PARALLEL
             const clientPromises = clientAddresses.map(async (addr) => {
-                const delegation = await getDelegation(addr, managerAddress)
-                if (!delegation?.isActive) return null
-
-                const code = await provider.getCode(addr)
-                const walletType: 'safe' | 'eoa' = code && code !== '0x' ? 'safe' : 'eoa'
-
-                let usdcBalance = '0'
-                let wethBalance = '0'
-                let clientValue = 0
-
                 try {
-                    const balancePromises: Promise<any>[] = []
+                    const delegation = await getDelegation(addr, managerAddress)
+                    if (!delegation?.isActive) return null
 
-                    if (tokens.USDC?.address) {
-                        const usdcContract = new Contract(tokens.USDC.address, ERC20_ABI, provider)
-                        balancePromises.push(usdcContract.balanceOf(addr))
-                    } else {
-                        balancePromises.push(Promise.resolve(0n))
+                    const code = await provider.getCode(addr)
+                    const walletType: 'safe' | 'eoa' = code && code !== '0x' ? 'safe' : 'eoa'
+
+                    let usdcBalance = '0'
+                    let wethBalance = '0'
+                    let clientValue = 0
+
+                    try {
+                        const balancePromises: Promise<any>[] = []
+
+                        if (tokens.USDC?.address) {
+                            const usdcContract = new Contract(tokens.USDC.address, ERC20_ABI, provider)
+                            balancePromises.push(usdcContract.balanceOf(addr))
+                        } else {
+                            balancePromises.push(Promise.resolve(0n))
+                        }
+
+                        if (tokens.WETH?.address) {
+                            const wethContract = new Contract(tokens.WETH.address, ERC20_ABI, provider)
+                            balancePromises.push(wethContract.balanceOf(addr))
+                        } else {
+                            balancePromises.push(Promise.resolve(0n))
+                        }
+
+                        const [usdcBal, wethBal] = await Promise.all(balancePromises)
+
+                        if (tokens.USDC) {
+                            usdcBalance = formatUnits(usdcBal, tokens.USDC.decimals)
+                            clientValue += parseFloat(usdcBalance)
+                        }
+                        if (tokens.WETH) {
+                            wethBalance = formatUnits(wethBal, tokens.WETH.decimals)
+                            clientValue += parseFloat(wethBalance) * ethPriceUSD
+                        }
+                    } catch (err) {
+                        console.warn('Failed to get balances for', addr)
                     }
 
-                    if (tokens.WETH?.address) {
-                        const wethContract = new Contract(tokens.WETH.address, ERC20_ABI, provider)
-                        balancePromises.push(wethContract.balanceOf(addr))
-                    } else {
-                        balancePromises.push(Promise.resolve(0n))
-                    }
-
-                    const [usdcBal, wethBal] = await Promise.all(balancePromises)
-
-                    if (tokens.USDC) {
-                        usdcBalance = formatUnits(usdcBal, tokens.USDC.decimals)
-                        clientValue += parseFloat(usdcBalance)
-                    }
-                    if (tokens.WETH) {
-                        wethBalance = formatUnits(wethBal, tokens.WETH.decimals)
-                        clientValue += parseFloat(wethBalance) * ethPriceUSD
+                    return {
+                        address: addr,
+                        walletType,
+                        usdcBalance,
+                        wethBalance,
+                        totalValue: clientValue,
                     }
                 } catch (err) {
-                    console.warn('Failed to get balances for', addr)
-                }
-
-                return {
-                    address: addr,
-                    walletType,
-                    usdcBalance,
-                    wethBalance,
-                    totalValue: clientValue,
+                    console.error('DEBUG: Failed to fetch client details', { addr, err })
+                    return null
                 }
             })
 
@@ -169,8 +176,11 @@ export default function Summary() {
             let totalTrades = 0
             let totalVolumeUSD = 0
             const currentBlock = await provider.getBlockNumber()
-            // Use same block range as ExecutionDetails (500k blocks for ~1-2 days on Arbitrum)
-            const fromBlock = Math.max(0, currentBlock - 500000)
+
+            // Fix: Increase lookback for Arbitrum (fast blocks) to match ExecutionDetails
+            const isArbitrum = chainId === 42161
+            const lookback = isArbitrum ? 2_000_000 : 500_000 // 2M blocks ~ 6 days
+            const fromBlock = Math.max(0, currentBlock - lookback)
 
             // Approximate prices for USD calculation
             const tokenPrices: Record<string, number> = {
@@ -201,7 +211,10 @@ export default function Summary() {
                             tokenContract
                                 .queryFilter(tokenContract.filters.Transfer(client, TREASURY_ADDRESS), fromBlock, 'latest')
                                 .then(events => ({ symbol, decimals: token.decimals, events, client }))
-                                .catch(() => ({ symbol, decimals: token.decimals, events: [], client }))
+                                .catch((err) => {
+                                    console.error('DEBUG: Event query failed', { symbol, client, err })
+                                    return { symbol, decimals: token.decimals, events: [], client }
+                                })
                         )
                     }
                 }
