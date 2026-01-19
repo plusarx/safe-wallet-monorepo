@@ -19,7 +19,8 @@ const PageLayout = ({ pathname, children }: { pathname: string; children: ReactE
   const { txFlow, setFullWidth } = useContext(TxModalContext)
   const isSafeLabsTermsPage = pathname === AppRoutes.safeLabsTerms
   const isWelcomePage = pathname === AppRoutes.welcome.index
-  const hideHeader = isSafeLabsTermsPage || isWelcomePage
+  const isLandingPage = pathname === AppRoutes.index
+  const hideHeader = isSafeLabsTermsPage || isWelcomePage || isLandingPage
 
   // Hide sidebar when transaction flow is open
   const isSidebarVisible = isSidebarOpen && !txFlow
