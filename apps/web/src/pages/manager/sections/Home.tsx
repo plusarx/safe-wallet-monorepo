@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Box,
   Typography,
@@ -9,12 +10,20 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Select,
+  MenuItem,
+  FormControl,
+  Tooltip,
+  Chip,
+  Avatar,
 } from '@mui/material'
+import PublicIcon from '@mui/icons-material/Public'
 
 import { useManagerStats } from '../../../hooks/manager/useManagerStats'
 
 export default function Home() {
   const { summary, isLoading } = useManagerStats()
+  const [selectedChain, setSelectedChain] = useState('Arbitrum')
 
   const formatUSD = (value: number) =>
     value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
@@ -27,6 +36,10 @@ export default function Home() {
     { title: 'Active Accounts', value: isLoading ? '--' : formatNum(summary.totalClients) },
     { title: 'Running PnL', value: isLoading ? '--' : formatUSD(summary.unrealizedPnL) },
   ]
+
+  // Filter portfolio based on selected chain
+  // Currently only Arbitrum has real data logic in the hook
+  const portfolioData = selectedChain === 'Arbitrum' ? summary.portfolio : []
 
   return (
     <Box>
@@ -74,7 +87,130 @@ export default function Home() {
         ))}
       </Grid>
 
-      {/* Asset-wise Performance Table */}
+      {/* Portfolio Overview Table */}
+      <Box mb={6}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h3" fontWeight={700}>
+            Portfolio Overview
+          </Typography>
+          <FormControl sx={{ minWidth: 150 }} size="small">
+            <Select
+              value={selectedChain}
+              onChange={(e) => setSelectedChain(e.target.value)}
+              displayEmpty
+              renderValue={(selected) => (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <PublicIcon fontSize="small" color="action" />
+                  {selected}
+                </Box>
+              )}
+              sx={{
+                borderRadius: 2,
+                bgcolor: 'var(--color-background-paper)',
+                '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--color-border-light)' },
+              }}
+            >
+              <MenuItem value="Arbitrum">Arbitrum</MenuItem>
+              <MenuItem value="BNB">BNB Chain</MenuItem>
+              <MenuItem value="Solana">Solana</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+
+        <TableContainer
+          component={Paper}
+          elevation={0}
+          sx={{
+            bgcolor: 'var(--color-background-paper)',
+            border: '1px solid var(--color-border-light)',
+            borderRadius: 4,
+            overflow: 'hidden',
+          }}
+        >
+          <Table sx={{ minWidth: 650 }}>
+            <TableHead sx={{ bgcolor: 'rgba(255,255,255,0.02)' }}>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>Asset</TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }} align="right">
+                  Balance
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }} align="right">
+                  Value (USD)
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }} align="right">
+                  Clients
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
+                    Loading assets...
+                  </TableCell>
+                </TableRow>
+              ) : portfolioData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    No assets found on {selectedChain}.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                portfolioData.map((asset) => (
+                  <TableRow key={asset.symbol} hover>
+                    <TableCell>
+                      <Box display="flex" alignItems="center" gap={1.5}>
+                        {/* Placeholder icon if needed, or just text */}
+                        <Avatar sx={{ width: 24, height: 24, fontSize: '0.7rem', bgcolor: 'primary.main' }}>
+                          {asset.symbol[0]}
+                        </Avatar>
+                        <Typography fontWeight={600}>{asset.symbol}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontFamily="monospace">
+                        {asset.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={500}>
+                        {formatUSD(asset.value)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip
+                        title={
+                          <Box sx={{ p: 0.5 }}>
+                            <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
+                              Holders:
+                            </Typography>
+                            {asset.holders.map((h) => (
+                              <div key={h.address} style={{ fontFamily: 'monospace' }}>
+                                {h.address.substring(0, 6)}...{h.address.substring(38)} ({h.walletType})
+                              </div>
+                            ))}
+                          </Box>
+                        }
+                        arrow
+                        placement="left"
+                      >
+                        <Chip
+                          label={`${asset.holders.length} Clients`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ cursor: 'help', borderColor: 'rgba(255,255,255,0.1)' }}
+                        />
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+
+      {/* Asset-wise Performance Table (Placeholder/Legacy) */}
       <Box>
         <Typography variant="h3" fontWeight={700} gutterBottom sx={{ mb: 3 }}>
           Asset-wise Performance Overview

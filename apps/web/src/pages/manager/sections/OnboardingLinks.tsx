@@ -256,7 +256,7 @@ export default function OnboardingLinks() {
             >
               {isRegistered ? (
                 <>
-                  <strong>{managerInfo?.name}</strong> - Fee: {managerInfo?.feeRate}
+                  <strong>{managerInfo?.name}</strong>
                 </>
               ) : (
                 'You are not registered as a manager yet. Register first via the contract.'
@@ -442,29 +442,6 @@ export default function OnboardingLinks() {
               </TableContainer>
             )}
           </Paper>
-
-          {/* Contract Info
-                    <Paper sx={{ p: 3, mt: 3 }}>
-                        <Typography variant="subtitle2" color="text.secondary" mb={1}>
-                            Contract Address
-                        </Typography>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontFamily="monospace">
-                                {DELEGATION_MODULE_ADDRESS}
-                            </Typography>
-                            <Tooltip title={copied === 'contract' ? 'Copied!' : 'Copy'}>
-                                <IconButton
-                                    size="small"
-                                    onClick={() => copyToClipboard(DELEGATION_MODULE_ADDRESS, 'contract')}
-                                >
-                                    <ContentCopyIcon fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary">
-                            Arbitrum One
-                        </Typography>
-                    </Paper> */}
         </Grid>
       </Grid>
     </Box>

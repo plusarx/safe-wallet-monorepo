@@ -37,6 +37,13 @@ export interface ExecutionRecord {
   blockNumber: number
 }
 
+export interface AssetOverview {
+  symbol: string
+  balance: number
+  value: number // USD
+  holders: ClientInfo[] // List of clients holding this asset
+}
+
 export interface SummaryData {
   totalClients: number
   safeClients: number
@@ -46,6 +53,7 @@ export interface SummaryData {
   totalAUM: number
   unrealizedPnL: number
   realizedPnL: number
+  portfolio: AssetOverview[]
 }
 
 export const useManagerStats = () => {
@@ -63,6 +71,7 @@ export const useManagerStats = () => {
     totalAUM: 0,
     unrealizedPnL: 0,
     realizedPnL: 0,
+    portfolio: [],
   })
 
   const { getManagerClients, getDelegation } = useDelegationModule()
@@ -83,15 +92,21 @@ export const useManagerStats = () => {
       const tokens = TOKENS_BY_CHAIN[chainId]
 
       if (!tokens) {
-        setError(`Chain ${chainId} not supported`)
-        return
+        // If unsupported chain, allow partial data or show error
+        // But preventing crash is better.
+        // setError(`Chain ${chainId} not supported`)
       }
 
       // Get client addresses
       const ClientsResult = await getManagerClients(managerAddress)
       const clientAddresses = Array.from(ClientsResult)
 
-      const ethPriceUSD = 3300 // Approximate price
+      const ethPriceUSD = 3300 // Approximate price - TODO: Fetch real price
+
+      const assetMap: Record<string, AssetOverview> = {
+        USDC: { symbol: 'USDC', balance: 0, value: 0, holders: [] },
+        WETH: { symbol: 'WETH', balance: 0, value: 0, holders: [] },
+      }
 
       // --- 1. Fetch Client Details ---
       const clientPromises = clientAddresses.map(async (addr) => {
@@ -107,43 +122,46 @@ export const useManagerStats = () => {
           let clientValue = 0
 
           try {
-            const balancePromises: Promise<any>[] = []
+            if (tokens) {
+              const balancePromises: Promise<any>[] = []
 
-            if (tokens.USDC?.address) {
-              const usdcContract = new Contract(tokens.USDC.address, ERC20_ABI, provider)
-              balancePromises.push(usdcContract.balanceOf(addr))
-            } else {
-              balancePromises.push(Promise.resolve(0n))
-            }
+              if (tokens.USDC?.address) {
+                const usdcContract = new Contract(tokens.USDC.address, ERC20_ABI, provider)
+                balancePromises.push(usdcContract.balanceOf(addr))
+              } else {
+                balancePromises.push(Promise.resolve(0n))
+              }
 
-            if (tokens.WETH?.address) {
-              const wethContract = new Contract(tokens.WETH.address, ERC20_ABI, provider)
-              balancePromises.push(wethContract.balanceOf(addr))
-            } else {
-              balancePromises.push(Promise.resolve(0n))
-            }
+              if (tokens.WETH?.address) {
+                const wethContract = new Contract(tokens.WETH.address, ERC20_ABI, provider)
+                balancePromises.push(wethContract.balanceOf(addr))
+              } else {
+                balancePromises.push(Promise.resolve(0n))
+              }
 
-            const [usdcBal, wethBal] = await Promise.all(balancePromises)
+              const [usdcBal, wethBal] = await Promise.all(balancePromises)
 
-            if (tokens.USDC) {
-              usdcBalance = formatUnits(usdcBal, tokens.USDC.decimals)
-              clientValue += parseFloat(usdcBalance)
-            }
-            if (tokens.WETH) {
-              wethBalance = formatUnits(wethBal, tokens.WETH.decimals)
-              clientValue += parseFloat(wethBalance) * ethPriceUSD
+              if (tokens.USDC) {
+                usdcBalance = formatUnits(usdcBal, tokens.USDC.decimals)
+                clientValue += parseFloat(usdcBalance)
+              }
+              if (tokens.WETH) {
+                wethBalance = formatUnits(wethBal, tokens.WETH.decimals)
+                clientValue += parseFloat(wethBalance) * ethPriceUSD
+              }
             }
           } catch (err) {
             console.warn('Failed to get balances for', addr)
           }
 
-          return {
+          const clientInfo: ClientInfo = {
             address: addr,
             walletType,
             usdcBalance,
             wethBalance,
             totalValue: clientValue,
           }
+          return clientInfo
         } catch (err) {
           return null
         }
@@ -161,6 +179,21 @@ export const useManagerStats = () => {
         totalAUM += client.totalValue
         if (client.walletType === 'safe') safeCount++
         else eoaCount++
+
+        // Aggregate Assets
+        const usdc = parseFloat(client.usdcBalance)
+        if (usdc > 0.01) {
+          assetMap.USDC.balance += usdc
+          assetMap.USDC.value += usdc
+          assetMap.USDC.holders.push(client)
+        }
+
+        const weth = parseFloat(client.wethBalance)
+        if (weth > 0.000001) {
+          assetMap.WETH.balance += weth
+          assetMap.WETH.value += weth * ethPriceUSD
+          assetMap.WETH.holders.push(client)
+        }
       }
       setClients(clientList)
 
@@ -169,18 +202,18 @@ export const useManagerStats = () => {
       let totalVolumeUSD = 0
       const executionRecords: ExecutionRecord[] = []
 
-      const currentBlock = await provider.getBlockNumber()
-      const isArbitrum = chainId === 42161
-      const lookback = isArbitrum ? 2_000_000 : 500_000
-      const fromBlock = Math.max(0, currentBlock - lookback)
+      if (tokens && tradingModule) {
+        const currentBlock = await provider.getBlockNumber()
+        const isArbitrum = chainId === 42161
+        const lookback = isArbitrum ? 2_000_000 : 500_000
+        const fromBlock = Math.max(0, currentBlock - lookback)
 
-      const tokenPrices: Record<string, number> = {
-        USDC: 1,
-        USDT: 1,
-        WETH: ethPriceUSD,
-      }
+        const tokenPrices: Record<string, number> = {
+          USDC: 1,
+          USDT: 1,
+          WETH: ethPriceUSD,
+        }
 
-      if (tradingModule) {
         const queryPromises: Promise<{
           symbol: string
           decimals: number
@@ -280,6 +313,7 @@ export const useManagerStats = () => {
         totalAUM,
         unrealizedPnL: 0,
         realizedPnL: 0,
+        portfolio: Object.values(assetMap),
       })
     } catch (err: any) {
       console.error('Failed to load summary:', err)

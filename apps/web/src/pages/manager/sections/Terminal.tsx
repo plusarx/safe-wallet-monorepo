@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Box, Tabs, Tab, Paper } from '@mui/material'
-import ShowChartIcon from '@mui/icons-material/ShowChart'
-import TimelineIcon from '@mui/icons-material/Timeline'
+import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
+import SwapHoriz from '@mui/icons-material/SwapHoriz'
 
 // Import the existing functional components
-import TradingTerminal from './TradingTerminal'
-import OrderTypes from './OrderTypes'
+import SpotTrading from './SpotTrading'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -63,17 +62,18 @@ export default function Terminal() {
             },
           }}
         >
-          <Tab icon={<ShowChartIcon />} iconPosition="start" label="Swap" {...a11yProps(0)} />
-          <Tab icon={<TimelineIcon />} iconPosition="start" label="Limit / Stop" {...a11yProps(1)} />
+          <Tab icon={<SwapHoriz />} iconPosition="start" label="Spot" {...a11yProps(0)} />
+          <Tab icon={<CandlestickChartIcon />} iconPosition="start" label="Perps" {...a11yProps(1)} />
         </Tabs>
       </Paper>
 
       {/* Tab Panels */}
       <CustomTabPanel value={value} index={0}>
-        <TradingTerminal />
+        <SpotTrading />
       </CustomTabPanel>
       <CustomTabPanel value={value} index={1}>
-        <OrderTypes />
+        {/* Placeholder for Perps */}
+        <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>Perpetuals Trading Coming Soon</Box>
       </CustomTabPanel>
     </Box>
   )
