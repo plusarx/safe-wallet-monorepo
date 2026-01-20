@@ -20,7 +20,8 @@ const PageLayout = ({ pathname, children }: { pathname: string; children: ReactE
   const isSafeLabsTermsPage = pathname === AppRoutes.safeLabsTerms
   const isWelcomePage = pathname === AppRoutes.welcome.index
   const isLandingPage = pathname === AppRoutes.index
-  const hideHeader = isSafeLabsTermsPage || isWelcomePage || isLandingPage
+  const isOnboardPage = pathname === AppRoutes.onboard
+  const hideHeader = isSafeLabsTermsPage || isWelcomePage || isLandingPage || isOnboardPage
 
   // Hide sidebar when transaction flow is open
   const isSidebarVisible = isSidebarOpen && !txFlow

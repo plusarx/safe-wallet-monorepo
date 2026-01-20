@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/router'
 import {
   Box,
   Drawer,
@@ -16,53 +17,60 @@ import {
   useMediaQuery,
   AppBar,
   Toolbar,
-  Paper,
+  CircularProgress,
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import MenuIcon from '@mui/icons-material/Menu'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
-import LinkIcon from '@mui/icons-material/Link'
 import SummarizeIcon from '@mui/icons-material/Summarize'
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
-import TimelineIcon from '@mui/icons-material/Timeline'
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
+import DashboardIcon from '@mui/icons-material/Dashboard'
+import PeopleIcon from '@mui/icons-material/People'
 
 // Import page components
-import TradingTerminal from './sections/TradingTerminal'
-import OnboardingLinks from './sections/OnboardingLinks'
+import Home from './sections/Home'
+import Terminal from './sections/Terminal'
+import Clients from './sections/Clients'
 import Summary from './sections/Summary'
-import ExecutionDetails from './sections/ExecutionDetails'
-import OrderTypes from './sections/OrderTypes'
 
 // Safe wallet hooks
 import useWallet from '@/hooks/wallets/useWallet'
+import { useWalletRestoration } from '@/hooks/useWalletRestoration'
 
 const DRAWER_WIDTH = 240
 const DRAWER_WIDTH_COLLAPSED = 64
 
-type PageId = 'trading' | 'orders' | 'onboarding' | 'summary' | 'execution'
+type PageId = 'home' | 'terminal' | 'clients' | 'summary'
 
 const pages = [
-  { id: 'trading' as PageId, label: 'Trading Terminal', icon: <ShowChartIcon /> },
-  { id: 'orders' as PageId, label: 'Order Types', icon: <TimelineIcon /> },
-  { id: 'onboarding' as PageId, label: 'Onboarding Links', icon: <LinkIcon /> },
+  { id: 'home' as PageId, label: 'Home', icon: <DashboardIcon /> },
+  { id: 'terminal' as PageId, label: 'Terminal', icon: <ShowChartIcon /> },
+  { id: 'clients' as PageId, label: 'Clients', icon: <PeopleIcon /> },
   { id: 'summary' as PageId, label: 'Summary', icon: <SummarizeIcon /> },
-  { id: 'execution' as PageId, label: 'Execution Details', icon: <ReceiptLongIcon /> },
 ]
 
 export default function ManagerDashboard() {
   const theme = useTheme()
+  const router = useRouter()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [activePage, setActivePage] = useState<PageId>('trading')
+  const [activePage, setActivePage] = useState<PageId>('home')
 
   // Centralized wallet connection
   const wallet = useWallet()
+  const walletAddress = wallet?.address || ''
+  const isRestoring = useWalletRestoration(walletAddress)
 
   const drawerWidth = collapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH
+
+  useEffect(() => {
+    // Only redirect if we are NOT restoring and still have no wallet
+    if (!isRestoring && !walletAddress) {
+      router.push('/')
+    }
+  }, [walletAddress, isRestoring, router])
 
   const handlePageChange = (pageId: PageId) => {
     setActivePage(pageId)
@@ -73,18 +81,16 @@ export default function ManagerDashboard() {
 
   const renderPage = () => {
     switch (activePage) {
-      case 'trading':
-        return <TradingTerminal />
-      case 'orders':
-        return <OrderTypes />
-      case 'onboarding':
-        return <OnboardingLinks />
+      case 'home':
+        return <Home />
       case 'summary':
         return <Summary />
-      case 'execution':
-        return <ExecutionDetails />
+      case 'terminal':
+        return <Terminal />
+      case 'clients':
+        return <Clients />
       default:
-        return <TradingTerminal />
+        return <Home />
     }
   }
 
@@ -156,20 +162,19 @@ export default function ManagerDashboard() {
     </>
   )
 
-  // Centralized wallet connection prompt - shown once for all pages
-  const renderWalletPrompt = () => (
-    <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
-      <Paper sx={{ p: 4, textAlign: 'center', maxWidth: 400 }}>
-        <AccountBalanceWalletIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
-        <Typography variant="h5" fontWeight={600} gutterBottom>
-          Wallet Disconnected
-        </Typography>
-        <Typography variant="body2" color="text.secondary" mb={3}>
-          Please connect your wallet to access the Manager Dashboard.
-        </Typography>
-      </Paper>
-    </Box>
-  )
+  // Show loading during restoration to prevent redirect flash
+  if (isRestoring && !walletAddress) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+        <CircularProgress />
+      </Box>
+    )
+  }
+
+  // If not restoring and no wallet, effect will redirect. Render nothing or prompt.
+  if (!walletAddress) {
+    return null // Will redirect via useEffect
+  }
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -251,7 +256,7 @@ export default function ManagerDashboard() {
           width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
         }}
       >
-        {wallet?.address ? renderPage() : renderWalletPrompt()}
+        {renderPage()}
       </Box>
     </Box>
   )

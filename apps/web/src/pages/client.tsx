@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import useWallet from '@/hooks/wallets/useWallet'
+import { useWalletRestoration } from '@/hooks/useWalletRestoration'
 import {
   Container,
   Typography,
@@ -24,15 +25,13 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material'
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import SecurityIcon from '@mui/icons-material/Security'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import SettingsIcon from '@mui/icons-material/Settings'
 import DeleteIcon from '@mui/icons-material/Delete'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import OpenInNewIcon from '@mui/icons-material/OpenInNew'
-import { useDelegationModule, DELEGATION_MODULE_ADDRESS, PERMISSION } from '../hooks/useDelegationModule'
+import { useDelegationModule, PERMISSION } from '../hooks/useDelegationModule'
 
 interface ManagerDelegation {
   address: string
@@ -47,6 +46,7 @@ export default function ClientDashboard() {
   const router = useRouter()
   const wallet = useWallet()
   const walletAddress = wallet?.address || ''
+  const isRestoring = useWalletRestoration(walletAddress)
   const [delegations, setDelegations] = useState<ManagerDelegation[]>([])
   const [isLoadingDelegations, setIsLoadingDelegations] = useState(false)
 
@@ -90,7 +90,7 @@ export default function ClientDashboard() {
     if (walletAddress) {
       loadDelegations()
     }
-  }, [walletAddress])
+  }, [walletAddress, loadDelegations])
 
   const handleRevoke = async (managerAddress: string) => {
     if (!confirm('Are you sure you want to revoke this delegation?')) return
@@ -111,20 +111,14 @@ export default function ClientDashboard() {
     return labels
   }
 
-  if (!walletAddress) {
-    return (
-      <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
-        <Paper sx={{ p: 6 }}>
-          <AccountBalanceWalletIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-          <Typography variant="h5" fontWeight={600} gutterBottom>
-            Client Dashboard
-          </Typography>
-          <Typography variant="body1" color="text.secondary" mb={4}>
-            Please connect your wallet to view your delegated managers.
-          </Typography>
-        </Paper>
-      </Container>
-    )
+  useEffect(() => {
+    if (!isRestoring && !walletAddress) {
+      router.push('/')
+    }
+  }, [walletAddress, isRestoring, router])
+
+  if (isRestoring || !walletAddress) {
+    return null
   }
 
   return (
@@ -147,9 +141,6 @@ export default function ClientDashboard() {
             disabled={isLoadingDelegations}
           >
             Refresh
-          </Button>
-          <Button variant="contained" onClick={() => router.push('/onboard')}>
-            Add Manager
           </Button>
         </Box>
       </Box>
@@ -215,12 +206,6 @@ export default function ClientDashboard() {
           <Typography variant="h6" fontWeight={600}>
             Delegated Managers
           </Typography>
-          <Chip
-            label={`Contract: ${DELEGATION_MODULE_ADDRESS.substring(0, 10)}...`}
-            size="small"
-            onClick={() => window.open(`https://arbiscan.io/address/${DELEGATION_MODULE_ADDRESS}`, '_blank')}
-            icon={<OpenInNewIcon />}
-          />
         </Box>
 
         {isLoadingDelegations ? (
@@ -228,12 +213,7 @@ export default function ClientDashboard() {
             <CircularProgress />
           </Box>
         ) : delegations.length === 0 ? (
-          <Alert severity="info">
-            You haven&apos;t delegated to any managers yet.{' '}
-            <Button size="small" onClick={() => router.push('/onboard')}>
-              Get Started
-            </Button>
-          </Alert>
+          <Alert severity="info">You haven&apos;t delegated to any managers yet.</Alert>
         ) : (
           <TableContainer>
             <Table>

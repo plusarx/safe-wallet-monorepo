@@ -55,6 +55,9 @@ import { useSafeLabsTerms } from '@/hooks/useSafeLabsTerms'
 const reduxStore = makeStore()
 setStoreInstance(reduxStore)
 
+import { useInactivityLogout } from '@/hooks/useInactivityLogout'
+import useWallet from '@/hooks/wallets/useWallet'
+
 const InitApp = (): null => {
   useHydrateStore(reduxStore)
   useAdjustUrl()
@@ -78,6 +81,9 @@ const InitApp = (): null => {
   useVisitedSafes()
   usePortfolioRefetchOnTxHistory()
   useSafeLabsTerms() // Automatically disconnect wallets if terms not accepted and feature is enabled
+
+  const wallet = useWallet()
+  useInactivityLogout(wallet)
 
   return null
 }

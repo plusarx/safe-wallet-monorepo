@@ -40,11 +40,12 @@ const IndexPage: NextPage = () => {
     <Box
       sx={{
         minHeight: '100vh',
-        bgcolor: '#F9F9F9', // Light background
+        bgcolor: '#121212', // Dark background
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        pt: 10,
+        justifyContent: 'center',
+        py: 4,
         px: 2,
       }}
     >
@@ -56,10 +57,10 @@ const IndexPage: NextPage = () => {
           color: 'white',
           fontWeight: 700,
           fontSize: '2.0rem',
-          height: 48,
+          height: 64,
           borderRadius: 5,
           mb: 8,
-          px: 2,
+          px: 3,
         }}
       />
 
@@ -69,27 +70,27 @@ const IndexPage: NextPage = () => {
           <Paper
             elevation={0}
             sx={{
-              p: 5,
-              height: 400,
+              p: 6,
+              height: 500,
               border: '4px solid #00C853',
-              borderRadius: 4,
-              bgcolor: '#FFFEF5', // Creamy white
+              borderRadius: 6,
+              bgcolor: '#1E1E1E', // Darker paper
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
               '&:hover': {
-                boxShadow: '0 8px 24px rgba(0,0,0,0.05)',
+                boxShadow: '0 8px 32px rgba(0,200,83,0.1)', // Greenish shadow on hover
               },
             }}
           >
             <Box>
               <Typography
-                variant="h1"
+                variant="h2"
                 component="h2"
                 fontFamily="serif"
                 fontWeight={400}
                 gutterBottom
-                sx={{ color: '#1A1A1A' }}
+                sx={{ color: '#FFFFFF', fontSize: '3rem' }}
               >
                 Login as client
               </Typography>
@@ -99,16 +100,18 @@ const IndexPage: NextPage = () => {
               sx={{
                 bgcolor: '#D4F788', // Light lime green button
                 color: '#1A1A1A',
-                fontWeight: 600,
-                py: 2,
+                fontWeight: 700,
+                fontSize: '1.2rem',
+                py: 2.5,
                 px: 4,
-                borderRadius: 10,
+                borderRadius: 50,
                 userSelect: 'none',
                 cursor: 'pointer',
                 textAlign: 'center',
-                transition: 'transform 0.2s',
+                transition: 'transform 0.2s, box-shadow 0.2s',
                 '&:hover': {
                   transform: 'scale(1.02)',
+                  boxShadow: '0 0 15px rgba(212, 247, 136, 0.4)',
                 },
                 '&:active': {
                   transform: 'scale(0.98)',
@@ -126,37 +129,38 @@ const IndexPage: NextPage = () => {
           <Paper
             elevation={0}
             sx={{
-              p: 5,
-              height: 400,
+              p: 6,
+              height: 500,
+              width: 600,
               border: '4px solid #00C853',
-              borderRadius: 4,
-              bgcolor: '#FFFEF5', // Creamy white
+              borderRadius: 6,
+              bgcolor: '#1E1E1E', // Darker paper
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
               '&:hover': {
-                boxShadow: '0 8px 24px rgba(0,0,0,0.05)',
+                boxShadow: '0 8px 32px rgba(0,200,83,0.1)',
               },
             }}
           >
             <Box>
               <Typography
-                variant="h1"
+                variant="h2"
                 component="h2"
                 fontFamily="serif"
                 fontWeight={400}
                 gutterBottom
-                sx={{ color: '#1A1A1A' }}
+                sx={{ color: '#FFFFFF', fontSize: '3rem' }}
               >
                 Login as fund manager
               </Typography>
 
-              <Box sx={{ mt: 4, p: 3, bgcolor: '#F5F5FA', borderRadius: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+              <Box sx={{ mt: 4, p: 3, bgcolor: '#2C2C2C', borderRadius: 3 }}>
+                <Typography variant="body1" sx={{ color: '#E0E0E0', lineHeight: 1.9 }}>
                   Connect your wallet to manage funds, execute trades, and view analytics.
                 </Typography>
                 {!wallet?.address && (
-                  <Typography variant="caption" sx={{ fontStyle: 'italic', color: '#999' }}>
+                  <Typography variant="caption" sx={{ fontStyle: 'italic', color: '#B0B0B0', mt: 1, display: 'block' }}>
                     No wallet connected
                   </Typography>
                 )}
@@ -167,16 +171,18 @@ const IndexPage: NextPage = () => {
               sx={{
                 bgcolor: '#D4F788', // Light lime green button
                 color: '#1A1A1A',
-                fontWeight: 600,
-                py: 2,
+                fontWeight: 700,
+                fontSize: '1.2rem',
+                py: 2.5,
                 px: 4,
-                borderRadius: 10,
+                borderRadius: 50,
                 userSelect: 'none',
                 cursor: 'pointer',
                 textAlign: 'center',
-                transition: 'transform 0.2s',
+                transition: 'transform 0.2s, box-shadow 0.2s',
                 '&:hover': {
                   transform: 'scale(1.02)',
+                  boxShadow: '0 0 15px rgba(212, 247, 136, 0.4)',
                 },
                 '&:active': {
                   transform: 'scale(0.98)',

@@ -17,6 +17,7 @@ export const AppRoutes = {
   bridge: '/bridge',
   addressBook: '/address-book',
   addOwner: '/addOwner',
+  onboard: '/onboard',
   _offline: '/_offline',
   apps: {
     open: '/apps/open',

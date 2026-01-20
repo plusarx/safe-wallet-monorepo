@@ -189,7 +189,10 @@ export const useInitOnboard = () => {
 
     enableWallets().then(() => {
       // Reconnect last wallet
-      connectLastWallet(onboard)
+      // Add a small delay to ensure everything is initialized
+      setTimeout(() => {
+        connectLastWallet(onboard)
+      }, 100)
     })
   }, [chain, onboard])
 
