@@ -1,13 +1,32 @@
-'use client'
-
 import { useState } from 'react'
-import { Box, Typography, Paper, Tabs, Tab, Alert, Chip, Divider, Skeleton, IconButton } from '@mui/material'
+import {
+  Box,
+  Typography,
+  Paper,
+  Tabs,
+  Tab,
+  Alert,
+  Chip,
+  Divider,
+  Skeleton,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  InputAdornment,
+  CircularProgress,
+} from '@mui/material'
 import InfoIcon from '@mui/icons-material/Info'
 import LinkIcon from '@mui/icons-material/Link'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import SettingsIcon from '@mui/icons-material/Settings'
 
 // Hooks and Contracts
 import { useManagerStats } from '../../../hooks/manager/useManagerStats'
+import { useTradingModule } from '../../../hooks/useTradingModule'
 
 // Child Component for Tab 2
 import OnboardingLinks from './OnboardingLinks'
@@ -46,9 +65,40 @@ export default function Clients() {
 
   // -- Consolidated Logic using Hook --
   const { clients, isLoading, error, refresh } = useManagerStats()
+  const { setDailyLimit, isLoading: isSettingLimit } = useTradingModule()
+
+  // Daily Limit State
+  const [openLimitDialog, setOpenLimitDialog] = useState(false)
+  const [selectedClient, setSelectedClient] = useState<{ address: string } | null>(null)
+  const [newDailyLimit, setNewDailyLimit] = useState('')
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
+  }
+
+  const handleOpenLimitDialog = (client: { address: string }) => {
+    setSelectedClient(client)
+    setNewDailyLimit('')
+    setActionMessage(null)
+    setOpenLimitDialog(true)
+  }
+
+  const handleSetLimit = async () => {
+    if (!selectedClient || !newDailyLimit) return
+
+    setActionMessage(null)
+    try {
+      const txHash = await setDailyLimit(selectedClient.address, newDailyLimit)
+      setActionMessage({ type: 'success', text: `Daily limit set! Tx: ${txHash.substring(0, 10)}...` })
+      setTimeout(() => {
+        setOpenLimitDialog(false)
+        setActionMessage(null)
+      }, 2000)
+    } catch (err: any) {
+      console.error('Failed to set limit:', err)
+      setActionMessage({ type: 'error', text: err.message || 'Failed to set limit' })
+    }
   }
 
   const shortenAddress = (addr: string) => `${addr.substring(0, 8)}...${addr.substring(addr.length - 6)}`
@@ -127,14 +177,19 @@ export default function Clients() {
                         sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
                       />
                     </Box>
-                    <Box textAlign="right">
-                      <Typography variant="body1" fontWeight={600} color="text.primary">
-                        {formatUSD(client.totalValue)}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {parseFloat(client.usdcBalance).toFixed(2)} USDC + {parseFloat(client.wethBalance).toFixed(6)}{' '}
-                        WETH
-                      </Typography>
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <Box textAlign="right">
+                        <Typography variant="body1" fontWeight={600} color="text.primary">
+                          {formatUSD(client.totalValue)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {parseFloat(client.usdcBalance).toFixed(2)} USDC + {parseFloat(client.wethBalance).toFixed(6)}{' '}
+                          WETH
+                        </Typography>
+                      </Box>
+                      <IconButton onClick={() => handleOpenLimitDialog(client)} size="small" sx={{ ml: 1 }}>
+                        <SettingsIcon fontSize="small" />
+                      </IconButton>
                     </Box>
                   </Box>
                   {i < clients.length - 1 && <Divider />}
@@ -149,6 +204,51 @@ export default function Clients() {
       <CustomTabPanel value={tabValue} index={1}>
         <OnboardingLinks />
       </CustomTabPanel>
+
+      {/* Daily Limit Dialog */}
+      <Dialog
+        open={openLimitDialog}
+        onClose={() => !isSettingLimit && setOpenLimitDialog(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Set Daily Limit</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Set the maximum daily spending limit (USD) for{' '}
+            {selectedClient ? shortenAddress(selectedClient.address) : ''}.
+          </Typography>
+
+          {actionMessage && (
+            <Alert severity={actionMessage.type} sx={{ mb: 2 }}>
+              {actionMessage.text}
+            </Alert>
+          )}
+
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Daily Limit (USD)"
+            type="number"
+            fullWidth
+            variant="outlined"
+            value={newDailyLimit}
+            onChange={(e) => setNewDailyLimit(e.target.value)}
+            InputProps={{
+              startAdornment: <InputAdornment position="start">$</InputAdornment>,
+            }}
+            disabled={isSettingLimit}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenLimitDialog(false)} disabled={isSettingLimit}>
+            Cancel
+          </Button>
+          <Button onClick={handleSetLimit} variant="contained" disabled={!newDailyLimit || isSettingLimit}>
+            {isSettingLimit ? <CircularProgress size={24} color="inherit" /> : 'Set Limit'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
