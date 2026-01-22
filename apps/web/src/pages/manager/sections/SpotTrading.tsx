@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { BrowserProvider } from 'ethers'
 import {
   Box,
   Typography,
@@ -14,15 +13,12 @@ import {
   FormControl,
   Alert,
   CircularProgress,
-  Divider,
-  Chip,
   IconButton,
-  InputAdornment,
+  Chip,
   Checkbox,
   FormControlLabel,
-  Badge,
-  Tabs,
-  Tab,
+  Divider,
+  Tooltip,
   Table,
   TableBody,
   TableCell,
@@ -32,148 +28,163 @@ import {
 } from '@mui/material'
 import GroupIcon from '@mui/icons-material/Group'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import SwapHoriz from '@mui/icons-material/SwapHoriz'
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
-import TrendingDownIcon from '@mui/icons-material/TrendingDown'
-import BarChartIcon from '@mui/icons-material/BarChart'
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
-import GpsFixedIcon from '@mui/icons-material/GpsFixed'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import FlashOnIcon from '@mui/icons-material/FlashOn'
-import ExpandLess from '@mui/icons-material/ExpandLess'
-import ExpandMore from '@mui/icons-material/ExpandMore'
-import { Collapse } from '@mui/material'
+import SwapHoriz from '@mui/icons-material/SwapHoriz'
+import ScheduleIcon from '@mui/icons-material/Schedule'
+import SmartToyIcon from '@mui/icons-material/SmartToy'
+import AutoGraphIcon from '@mui/icons-material/AutoGraph'
+import DeleteIcon from '@mui/icons-material/Delete'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import PeopleIcon from '@mui/icons-material/People'
+import { Tabs, Tab } from '@mui/material'
 
 import { useTradingModule } from '../../../hooks/useTradingModule'
 import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN } from '../../../contracts/TradingModule'
-import useWallet from '@/hooks/wallets/useWallet'
-import { useManagerClients } from '@/hooks/manager/useManagerClients'
+import type { ClientInfo } from '../../../hooks/manager/useManagerClients'
 
-// --- Types & Constants ---
+// --- Types ---
+
+export type OrderType = 'market' | 'twap' | 'smart_market' | 'smart_twap'
+
+interface SpotTradingProps {
+  clients: ClientInfo[]
+  isLoadingClients: boolean
+  toggleClient: (address: string) => void
+  toggleSelectAll: (filteredClients: ClientInfo[]) => void
+  refreshClients: () => void
+  selectedClients: ClientInfo[]
+}
+
+interface TriggerOrder {
+  id: string
+  type: string
+  clientAddresses: string[]
+  tokenIn: string
+  tokenOut: string
+  amountIn: string
+  triggerPrice?: string
+  limitPrice?: string // Added for new table compatibility
+  triggerCondition?: 'above' | 'below'
+  timeTrigger?: string
+  status: 'pending' | 'triggered' | 'filled' | 'cancelled' | 'failed' | 'partial'
+  createdAt: string
+  triggeredAt?: string
+  filledAt?: string
+}
 
 const DEFAULT_TOKEN_LIST = [
   { symbol: 'WETH', address: TOKENS.WETH.address, decimals: 18 },
   { symbol: 'USDC', address: TOKENS.USDC.address, decimals: 6 },
 ]
 
-type OrderType = 'market' | 'limit' | 'stop-market' | 'stop-limit'
-
-interface TriggerOrder {
-  id: string
-  type: Exclude<OrderType, 'market'>
-  clientAddresses: string[]
-  tokenIn: string
-  tokenOut: string
-  amountIn: string
-  triggerPrice: string
-  limitPrice?: string
-  triggerCondition: 'above' | 'below'
-  status: 'pending' | 'triggered' | 'filled' | 'cancelled' | 'failed' | 'partial'
-  createdAt: Date
-  triggeredAt?: Date
-  filledAt?: Date
-  filledCount?: number
-}
-
 const ORDERS_KEY = 'trading_trigger_orders'
 
-export default function SpotTrading() {
-  // Use Safe's wallet hook
-  const wallet = useWallet()
-  const walletAddress = wallet?.address || ''
+export default function SpotTrading({
+  clients,
+  isLoadingClients,
+  toggleClient,
+  toggleSelectAll,
+  refreshClients,
+  selectedClients,
+}: SpotTradingProps) {
+  // --- Layout State ---
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
-  // Clients Hook
-  const {
-    clients,
-    isLoading: isLoadingClients,
-    refresh: refreshClients,
-    toggleClient,
-    toggleSelectAll,
-  } = useManagerClients(walletAddress)
+  // --- Client Sidebar State ---
   const [walletTypeFilter, setWalletTypeFilter] = useState<'all' | 'eoa' | 'safe'>('all')
 
-  // Selected clients for operations
-  const selectedClients = clients.filter((c) => c.selected)
-
-  // Trading Module
+  // --- Trading Form State ---
   const {
     isLoading: isTrading,
     error: tradeError,
     executeTrade,
     executeBatchTrade,
-    calculateFee,
+
     getQuote,
   } = useTradingModule()
 
-  // --- Unified Form State ---
   const [orderType, setOrderType] = useState<OrderType>('market')
-
   const [tokenList, setTokenList] = useState(DEFAULT_TOKEN_LIST)
-  // Store symbols (string) to easily handle dynamic lists, find object when needed
   const [tokenInSymbol, setTokenInSymbol] = useState(DEFAULT_TOKEN_LIST[0].symbol)
   const [tokenOutSymbol, setTokenOutSymbol] = useState(DEFAULT_TOKEN_LIST[1].symbol)
-
   const [amountIn, setAmountIn] = useState('')
+  const [slippage, setSlippage] = useState('1.0') // Default 1%
 
-  // Market specific
-  const [slippage, setSlippage] = useState('0.5')
+  // Triggers
+  const [priceTriggerType, setPriceTriggerType] = useState<'none' | '>=' | '<='>('none')
+  const [priceTriggerValue, setPriceTriggerValue] = useState('')
+  const [timeTriggerType, setTimeTriggerType] = useState<'none' | 'at'>('none')
+  const [timeTriggerValue, setTimeTriggerValue] = useState('')
+
+  // Quote / Estimation
   const [quoteAmountOut, setQuoteAmountOut] = useState('')
   const [isQuoting, setIsQuoting] = useState(false)
-  const [_estimatedFee, setEstimatedFee] = useState<string>('0')
-
-  // Limit/Stop specific
-  const [triggerPrice, setTriggerPrice] = useState('')
-  const [limitPrice, setLimitPrice] = useState('') // For Stop-Limit
-  const [triggerCondition, setTriggerCondition] = useState<'above' | 'below'>('below')
-
-  // --- Orders Management State ---
-  const [orders, setOrders] = useState<TriggerOrder[]>([])
-  const [ordersTabValue, setOrdersTabValue] = useState(0)
-  const [isMonitoring, setIsMonitoring] = useState(false)
-
-  const [chainId, setChainId] = useState(42161) // Default Arb One
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [isClientListOpen, setIsClientListOpen] = useState(true)
 
-  // Helper to get full token objects
+  // --- Orders State ---
+  const [orders, setOrders] = useState<TriggerOrder[]>([])
+  const [tabValue, setTabValue] = useState(0)
+
+  // Derived Lists
+  const pendingOrders = orders.filter((o) => ['pending', 'triggered'].includes(o.status))
+  const filledOrders = orders.filter((o) => o.status === 'filled')
+  const failedOrders = orders.filter((o) => ['cancelled', 'failed'].includes(o.status))
+
+  // Helpers
+  const shortenAddress = (addr: string) => `${addr.substring(0, 5)}...${addr.substring(addr.length - 4)}`
+
+  const getOrderTypeLabel = (type: string) => {
+    switch (type) {
+      case 'market':
+        return 'Market'
+      case 'twap':
+        return 'TWAP'
+      case 'smart_market':
+        return 'Smart Market'
+      case 'smart_twap':
+        return 'Smart TWAP'
+      default:
+        return type.replace(/_/g, ' ').toUpperCase()
+    }
+  }
+
+  // Derived Values
   const tokenIn = tokenList.find((t) => t.symbol === tokenInSymbol) || tokenList[0]
   const tokenOut = tokenList.find((t) => t.symbol === tokenOutSymbol) || tokenList[1]
 
+  const filteredClients = clients.filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
+  const selectedCount = selectedClients.length
+
   // --- Effects ---
 
-  // Load Chain Data & Tokens
+  // Load Tokens and Orders
   useEffect(() => {
-    const loadChainData = async () => {
-      if (!window.ethereum) return
+    // Orders
+    const saved = localStorage.getItem(ORDERS_KEY)
+    if (saved) {
       try {
-        const provider = new BrowserProvider(window.ethereum as any)
-        const network = await provider.getNetwork()
-        const cId = Number(network.chainId)
-        setChainId(cId)
-
-        const tokens = TOKENS_BY_CHAIN[cId]
-        if (tokens) {
-          const list = Object.values(tokens)
-          setTokenList(list)
-          // Init Defaults if needed
-          if (!list.find((t) => t.symbol === tokenInSymbol)) {
-            setTokenInSymbol(list[0]?.symbol || 'WETH')
-            setTokenOutSymbol(list[1]?.symbol || list[0]?.symbol || 'USDC')
-          }
-        }
+        setOrders(JSON.parse(saved).reverse())
       } catch (e) {
         console.error(e)
       }
     }
-    loadChainData()
-  }, [tokenInSymbol])
 
-  // Calculate fee & Quote (ONLY for Market Swap or estimating price)
+    // Tokens (Mock / Chain load)
+    const cId = 42161
+    const tokens = TOKENS_BY_CHAIN[cId]
+    if (tokens) {
+      setTokenList(Object.values(tokens))
+    }
+  }, [])
+
+  // Quote Logic
   useEffect(() => {
-    if (orderType === 'market' && amountIn && parseFloat(amountIn) > 0) {
-      calculateFee(amountIn).then(setEstimatedFee)
+    if (amountIn && parseFloat(amountIn) > 0) {
       setIsQuoting(true)
-      const delayDebounceFn = setTimeout(() => {
+      const delay = setTimeout(() => {
         getQuote(tokenIn.address, tokenOut.address, amountIn, FEE_TIERS.MEDIUM, tokenIn.decimals, tokenOut.decimals)
           .then((amount) => {
             setQuoteAmountOut(amount)
@@ -181,154 +192,14 @@ export default function SpotTrading() {
           })
           .catch(() => setIsQuoting(false))
       }, 500)
-      return () => clearTimeout(delayDebounceFn)
+      return () => clearTimeout(delay)
     } else {
       setQuoteAmountOut('')
+      setIsQuoting(false)
     }
-  }, [amountIn, tokenIn, tokenOut, calculateFee, getQuote, orderType])
+  }, [amountIn, tokenIn, tokenOut, getQuote])
 
-  // Load Orders from LS
-  useEffect(() => {
-    if (!walletAddress) return
-    const saved = localStorage.getItem(ORDERS_KEY)
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        const restoredOrders = parsed.map((o: any) => ({
-          ...o,
-          createdAt: new Date(o.createdAt),
-          triggeredAt: o.triggeredAt ? new Date(o.triggeredAt) : undefined,
-          filledAt: o.filledAt ? new Date(o.filledAt) : undefined,
-        }))
-        setOrders(restoredOrders)
-      } catch (e) {
-        console.error('Error loading orders', e)
-      }
-    }
-  }, [walletAddress])
-
-  // Save Orders
-  useEffect(() => {
-    if (orders.length > 0) localStorage.setItem(ORDERS_KEY, JSON.stringify(orders))
-  }, [orders])
-
-  // Monitoring Logic for Orders (Client-Side)
-  useEffect(() => {
-    const pendingOrders = orders.filter((o) => o.status === 'pending')
-    if (pendingOrders.length === 0) {
-      setIsMonitoring(false)
-      return
-    }
-
-    setIsMonitoring(true)
-
-    const checkOrders = async () => {
-      const tokens = TOKENS_BY_CHAIN[chainId]
-      if (!tokens) return
-
-      for (const order of pendingOrders) {
-        try {
-          const tokenInData = tokens[order.tokenIn]
-          const tokenOutData = tokens[order.tokenOut]
-          if (!tokenInData || !tokenOutData) continue
-
-          const quote = await getQuote(
-            tokenInData.address,
-            tokenOutData.address,
-            '1',
-            tokenInData.decimals,
-            tokenOutData.decimals,
-            FEE_TIERS.MEDIUM,
-          )
-
-          const currentPriceNum = parseFloat(quote)
-          const triggerPriceNum = parseFloat(order.triggerPrice)
-
-          const isTriggered =
-            order.triggerCondition === 'below' ? currentPriceNum <= triggerPriceNum : currentPriceNum >= triggerPriceNum
-
-          if (isTriggered) {
-            console.log(`Order ${order.id} triggered!`)
-
-            setOrders((prev) =>
-              prev.map((o) =>
-                o.id === order.id ? { ...o, status: 'triggered' as const, triggeredAt: new Date() } : o,
-              ),
-            )
-
-            // Calculate Min Output based on order type
-            let minAmountOut: string
-            if (order.type === 'stop-market') {
-              const expectedOutput = parseFloat(order.amountIn) * currentPriceNum
-              minAmountOut = (expectedOutput * 0.99).toFixed(tokenOutData.decimals) // 1% Slippage
-            } else if (order.type === 'stop-limit' && order.limitPrice) {
-              const expectedOutput = parseFloat(order.amountIn) * parseFloat(order.limitPrice)
-              minAmountOut = expectedOutput.toFixed(tokenOutData.decimals)
-            } else {
-              // Limit Order
-              const expectedOutput = parseFloat(order.amountIn) * triggerPriceNum
-              minAmountOut = (expectedOutput * 0.99).toFixed(tokenOutData.decimals)
-            }
-
-            try {
-              // Execute
-              if (order.clientAddresses.length === 1) {
-                await executeTrade({
-                  safe: order.clientAddresses[0],
-                  tokenIn: tokenInData.address,
-                  tokenOut: tokenOutData.address,
-                  amountIn: order.amountIn,
-                  minAmountOut,
-                  feeTier: FEE_TIERS.MEDIUM,
-                  deadline: Math.floor(Date.now() / 1000) + 600,
-                  tokenInDecimals: tokenInData.decimals,
-                  tokenOutDecimals: tokenOutData.decimals,
-                })
-              } else {
-                await executeBatchTrade({
-                  safes: order.clientAddresses,
-                  tokenIn: tokenInData.address,
-                  tokenOut: tokenOutData.address,
-                  amounts: order.clientAddresses.map(() => order.amountIn),
-                  minAmountOut,
-                  feeTier: FEE_TIERS.MEDIUM,
-                  deadline: Math.floor(Date.now() / 1000) + 600,
-                  tokenInDecimals: tokenInData.decimals,
-                  tokenOutDecimals: tokenOutData.decimals,
-                })
-              }
-
-              setOrders((prev) =>
-                prev.map((o) =>
-                  o.id === order.id
-                    ? {
-                        ...o,
-                        status: 'filled' as const,
-                        filledAt: new Date(),
-                        filledCount: order.clientAddresses.length,
-                      }
-                    : o,
-                ),
-              )
-              setMessage({ type: 'success', text: `Order filled for ${order.clientAddresses.length} client(s)!` })
-            } catch (execErr: any) {
-              console.error('Failed to execute order:', execErr)
-              setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'failed' as const } : o)))
-              setMessage({ type: 'error', text: `Order execution failed: ${execErr.message || 'Unknown'}` })
-            }
-          }
-        } catch (err) {
-          console.warn(`Failed to check order ${order.id}:`, err)
-        }
-      }
-    }
-
-    const interval = setInterval(checkOrders, 15000)
-    checkOrders()
-    return () => clearInterval(interval)
-  }, [orders, chainId, getQuote, executeTrade, executeBatchTrade])
-
-  // --- Actions ---
+  // --- Handlers ---
 
   const handleSwapTokens = () => {
     const temp = tokenInSymbol
@@ -337,538 +208,629 @@ export default function SpotTrading() {
     setQuoteAmountOut('')
   }
 
+  const handleDeleteOrder = (id: string) => {
+    const newOrders = orders.filter((o) => o.id !== id)
+    setOrders(newOrders)
+    localStorage.setItem(ORDERS_KEY, JSON.stringify(newOrders.reverse())) // Store in original order logic if needed, simplify here
+  }
+
   const handleSubmit = async () => {
-    if (selectedClients.length === 0 || !amountIn) {
-      setMessage({ type: 'error', text: 'Select clients and enter amount' })
+    if (selectedClients.length === 0) {
+      setMessage({ type: 'error', text: 'No clients selected' })
       return
     }
-    setMessage(null)
 
-    if (orderType === 'market') {
-      // --- Market Swap Execution ---
-      const deadline = Math.floor(Date.now() / 1000) + 600
-      const estimatedOutput = quoteAmountOut ? parseFloat(quoteAmountOut) : 0
-      const slippagePercent = parseFloat(slippage) / 100
-      const calculatedMinOut = (estimatedOutput * (1 - slippagePercent)).toFixed(tokenOut.decimals)
-
+    // Prepare Execution
+    if (orderType === 'market' && priceTriggerType === 'none' && timeTriggerType === 'none') {
+      // Immediate Execution
       try {
+        const deadline = Math.floor(Date.now() / 1000) + 600
+        const estOut = parseFloat(quoteAmountOut || '0')
+        const minOut = (estOut * (1 - parseFloat(slippage) / 100)).toFixed(tokenOut.decimals)
+
         if (selectedClients.length === 1) {
-          const txHash = await executeTrade({
+          await executeTrade({
             safe: selectedClients[0].address,
             tokenIn: tokenIn.address,
             tokenOut: tokenOut.address,
             amountIn,
-            minAmountOut: calculatedMinOut,
+            minAmountOut: minOut,
             feeTier: FEE_TIERS.MEDIUM,
             deadline,
             tokenInDecimals: tokenIn.decimals,
             tokenOutDecimals: tokenOut.decimals,
           })
-          setMessage({ type: 'success', text: `Trade executed! Tx: ${txHash.substring(0, 10)}...` })
         } else {
-          const safes = selectedClients.map((c) => c.address)
-          const amounts = selectedClients.map(() => amountIn)
-          const txHash = await executeBatchTrade({
-            safes,
+          await executeBatchTrade({
+            safes: selectedClients.map((c) => c.address),
             tokenIn: tokenIn.address,
             tokenOut: tokenOut.address,
-            amounts,
-            minAmountOut: calculatedMinOut,
+            amounts: selectedClients.map(() => amountIn),
+            minAmountOut: minOut,
             feeTier: FEE_TIERS.MEDIUM,
             deadline,
             tokenInDecimals: tokenIn.decimals,
             tokenOutDecimals: tokenOut.decimals,
           })
-          setMessage({
-            type: 'success',
-            text: `Batch trade for ${safes.length} clients! Tx: ${txHash.substring(0, 10)}...`,
-          })
         }
+        setMessage({ type: 'success', text: 'Market Trade Executed!' })
         setAmountIn('')
-      } catch (err: any) {
-        console.error('Trade failed:', err)
-        setMessage({ type: 'error', text: err.message || 'Trade failed' })
+      } catch (e: any) {
+        console.error(e)
+        setMessage({ type: 'error', text: e.message || 'Trade Failed' })
       }
     } else {
-      // --- Create Conditional Order ---
-      if (!triggerPrice) {
-        setMessage({ type: 'error', text: 'Trigger price is required' })
-        return
-      }
-      if (orderType === 'stop-limit' && !limitPrice) {
-        setMessage({ type: 'error', text: 'Limit price is required for Stop-Limit orders' })
-        return
-      }
-
+      // Create Trigger Order
       const newOrder: TriggerOrder = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        type: orderType as Exclude<OrderType, 'market'>,
+        type: orderType,
         clientAddresses: selectedClients.map((c) => c.address),
         tokenIn: tokenInSymbol,
         tokenOut: tokenOutSymbol,
         amountIn,
-        triggerPrice,
-        limitPrice: orderType === 'stop-limit' ? limitPrice : undefined,
-        triggerCondition,
+        triggerPrice: priceTriggerType !== 'none' ? priceTriggerValue : undefined,
+        triggerCondition: priceTriggerType === 'none' ? undefined : priceTriggerType === '>=' ? 'above' : 'below',
+        timeTrigger: timeTriggerType !== 'none' ? timeTriggerValue : undefined,
         status: 'pending',
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       }
 
-      setOrders((prev) => [...prev, newOrder])
-      setMessage({ type: 'success', text: `Order created for ${selectedClients.length} client(s)!` })
+      const updated = [newOrder, ...orders]
+      setOrders(updated)
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(updated.slice().reverse())) // Assuming storage likes append? keeping simple
+      setMessage({ type: 'success', text: 'Order Created!' })
       setAmountIn('')
     }
   }
 
-  // --- Render Helpers ---
-
-  const pendingOrders = orders.filter((o) => o.status === 'pending')
-  const filledOrders = orders.filter((o) => o.status === 'filled' || o.status === 'triggered')
-  const failedOrders = orders.filter((o) => o.status === 'failed' || o.status === 'cancelled')
+  // --- Render ---
 
   return (
-    <Box>
-      {/* Messages */}
-      {(message || tradeError) && (
-        <Alert
-          severity={message?.type === 'success' ? 'success' : 'error'}
-          sx={{ mb: 2 }}
-          onClose={() => setMessage(null)}
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* 
+          TOP ROW: Sidebar + Form 
+          They should match height. We use Flex Row.
+      */}
+      <Box sx={{ display: 'flex', gap: 2, flex: 1, minHeight: 0 }}>
+        {/* === Sidebar === */}
+        <Paper
+          elevation={2}
+          sx={{
+            width: isSidebarOpen ? 320 : 64,
+            transition: 'width 0.3s',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
         >
-          {message?.text || tradeError}
-        </Alert>
-      )}
-
-      <Grid container spacing={3}>
-        {/* --- Left Column: Client Selection --- */}
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, height: 'fit-content', display: 'flex', flexDirection: 'column' }}>
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              mb={isClientListOpen ? 2 : 0}
-              onClick={() => setIsClientListOpen(!isClientListOpen)}
-              sx={{ cursor: 'pointer' }}
-            >
-              <Box display="flex" alignItems="center">
-                <Typography variant="subtitle2" fontWeight={600}>
-                  <GroupIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+          {/* Header */}
+          <Box
+            sx={{
+              p: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isSidebarOpen ? 'space-between' : 'center',
+              borderBottom: 1,
+              borderColor: 'divider',
+              height: 64, // Fixed Header Height
+            }}
+          >
+            {isSidebarOpen ? (
+              <Box>
+                <Typography variant="subtitle2" fontWeight={700}>
                   Clients
                 </Typography>
-                {!isClientListOpen && (
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                    ({selectedClients.length} Selected)
-                  </Typography>
-                )}
+                <Typography variant="caption" color="text.secondary">
+                  {selectedCount} Selected
+                </Typography>
               </Box>
-              <Box display="flex" alignItems="center">
-                <Badge badgeContent={selectedClients.length} color="primary" sx={{ mr: 1 }}>
+            ) : (
+              <Tooltip title={`${selectedCount} Selected`}>
+                <GroupIcon color={selectedCount > 0 ? 'primary' : 'action'} />
+              </Tooltip>
+            )}
+            <IconButton onClick={() => setIsSidebarOpen(!isSidebarOpen)} size="small">
+              {isSidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+            </IconButton>
+          </Box>
+
+          {/* Expanded List */}
+          {isSidebarOpen && (
+            <Box sx={{ p: 2, flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+              <Box display="flex" gap={1} mb={2}>
+                {['all', 'safe', 'eoa'].map((type) => (
                   <Chip
-                    label={selectedClients.length > 1 ? 'Batch' : 'Single'}
+                    key={type}
+                    label={type.toUpperCase()}
                     size="small"
-                    color={selectedClients.length > 1 ? 'primary' : 'default'}
+                    onClick={() => setWalletTypeFilter(type as any)}
+                    color={walletTypeFilter === type ? 'primary' : 'default'}
+                    variant={walletTypeFilter === type ? 'filled' : 'outlined'}
+                    sx={{ flex: 1, fontSize: '0.7rem' }}
                   />
-                </Badge>
-                <IconButton size="small">{isClientListOpen ? <ExpandLess /> : <ExpandMore />}</IconButton>
+                ))}
               </Box>
-            </Box>
 
-            <Collapse in={isClientListOpen}>
-              {clients.length === 0 ? (
-                isLoadingClients ? (
-                  <CircularProgress size={20} />
-                ) : (
-                  <Alert severity="info">No clients</Alert>
-                )
-              ) : (
-                <>
-                  <Box display="flex" gap={1} mb={2} flexWrap="wrap">
-                    <Chip
-                      label="All"
-                      size="small"
-                      onClick={() => setWalletTypeFilter('all')}
-                      color={walletTypeFilter === 'all' ? 'primary' : 'default'}
-                      variant={walletTypeFilter === 'all' ? 'filled' : 'outlined'}
-                    />
-                    <Chip
-                      label="Safe"
-                      size="small"
-                      onClick={() => setWalletTypeFilter('safe')}
-                      color={walletTypeFilter === 'safe' ? 'primary' : 'default'}
-                      variant={walletTypeFilter === 'safe' ? 'filled' : 'outlined'}
-                    />
-                    <Chip
-                      label="EOA"
-                      size="small"
-                      onClick={() => setWalletTypeFilter('eoa')}
-                      color={walletTypeFilter === 'eoa' ? 'primary' : 'default'}
-                      variant={walletTypeFilter === 'eoa' ? 'filled' : 'outlined'}
-                    />
-                  </Box>
-
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={clients
-                          .filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
-                          .every((c) => c.selected)}
-                        onChange={() =>
-                          toggleSelectAll(
-                            clients.filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter),
-                          )
-                        }
-                      />
-                    }
-                    label={<Typography variant="body2">Select All Visible</Typography>}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={filteredClients.length > 0 && filteredClients.every((c) => c.selected)}
+                    indeterminate={filteredClients.some((c) => c.selected) && !filteredClients.every((c) => c.selected)}
+                    onChange={() => toggleSelectAll(filteredClients)}
+                    size="small"
                   />
-                  <Divider sx={{ my: 1 }} />
+                }
+                label={<Typography variant="body2">Select All Visible</Typography>}
+                sx={{ mb: 1 }}
+              />
+              <Divider sx={{ mb: 1 }} />
 
-                  <Box sx={{ flex: 1, overflow: 'auto', maxHeight: 400 }}>
-                    {clients
-                      .filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
-                      .map((client) => (
-                        <FormControlLabel
-                          key={client.address}
-                          control={
-                            <Checkbox
-                              checked={client.selected}
-                              onChange={() => toggleClient(client.address)}
-                              size="small"
-                              sx={{ mt: 0 }}
-                            />
-                          }
-                          label={
-                            <Box>
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                  {client.address.substring(0, 6)}...{client.address.substring(38)}
-                                </Typography>
-                                <Chip
-                                  label={client.walletType.toUpperCase()}
-                                  size="small"
-                                  sx={{ height: 16, fontSize: '0.6rem' }}
-                                />
-                              </Box>
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                USDC: {parseFloat(client.usdcBalance || '0').toFixed(2)} | WETH:{' '}
-                                {parseFloat(client.wethBalance || '0').toFixed(4)}
-                              </Typography>
-                            </Box>
-                          }
-                          sx={{ display: 'flex', mb: 1, alignItems: 'flex-start' }}
-                        />
-                      ))}
+              <Box sx={{ flex: 1, overflowY: 'auto' }}>
+                {isLoadingClients && clients.length === 0 ? (
+                  <Box display="flex" justifyContent="center" p={2}>
+                    <CircularProgress size={20} />
                   </Box>
-                </>
-              )}
-              <Button startIcon={<RefreshIcon />} onClick={refreshClients} size="small" fullWidth sx={{ mt: 2 }}>
-                Refresh Clients
-              </Button>
-            </Collapse>
-          </Paper>
-        </Grid>
-
-        {/* --- Right Column: Unified Order Entry --- */}
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 3, mb: 4 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-              <Typography variant="h6" fontWeight={600}>
-                Order Entry
-              </Typography>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <Select value={orderType} onChange={(e) => setOrderType(e.target.value as OrderType)}>
-                  <MenuItem value="market">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <FlashOnIcon fontSize="small" /> Market Swap
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="limit">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <BarChartIcon fontSize="small" />
-                      Trigger Market
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="stop-market">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <NotificationsActiveIcon fontSize="small" /> Stop-Loss Market
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="stop-limit">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <GpsFixedIcon fontSize="small" /> Stop-Loss Limit
-                    </Box>
-                  </MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-
-            {/* Unified Form Inputs */}
-            <Grid container spacing={3}>
-              {/* Row 1: Token Selection */}
-              <Grid item xs={5}>
-                <TextField
-                  select
-                  fullWidth
-                  label="Sell"
-                  value={tokenInSymbol}
-                  onChange={(e) => {
-                    const symbol = e.target.value
-                    if (symbol === tokenOutSymbol) setTokenOutSymbol(tokenInSymbol)
-                    setTokenInSymbol(symbol)
-                  }}
-                >
-                  {tokenList.map((t) => (
-                    <MenuItem key={t.symbol} value={t.symbol}>
-                      {t.symbol}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={2} display="flex" alignItems="center" justifyContent="center">
-                <IconButton onClick={handleSwapTokens} color="primary">
-                  <SwapHoriz sx={{ fontSize: 40 }} />
-                </IconButton>
-              </Grid>
-              <Grid item xs={5}>
-                <TextField
-                  select
-                  fullWidth
-                  label="Buy"
-                  value={tokenOutSymbol}
-                  onChange={(e) => {
-                    const symbol = e.target.value
-                    if (symbol === tokenInSymbol) setTokenInSymbol(tokenOutSymbol)
-                    setTokenOutSymbol(symbol)
-                  }}
-                >
-                  {tokenList.map((t) => (
-                    <MenuItem key={t.symbol} value={t.symbol}>
-                      {t.symbol}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-
-              {/* Row 2: Amount & Estimation */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label={`Amount (${tokenInSymbol})`}
-                  type="number"
-                  value={amountIn}
-                  onChange={(e) => setAmountIn(e.target.value)}
-                  InputProps={{
-                    endAdornment: orderType === 'market' && isQuoting ? <CircularProgress size={20} /> : null,
-                  }}
-                />
-                {orderType === 'market' && quoteAmountOut && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Estimated Receive: ~{parseFloat(quoteAmountOut).toFixed(6)} {tokenOutSymbol}
-                  </Typography>
-                )}
-              </Grid>
-
-              {/* Row 3: Conditional Fields based on Order Type */}
-              {orderType !== 'market' && (
-                <>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Trigger Price"
-                      type="number"
-                      value={triggerPrice}
-                      onChange={(e) => setTriggerPrice(e.target.value)}
-                      helperText={`1 ${tokenInSymbol} = X ${tokenOutSymbol}`}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <IconButton
-                              size="small"
-                              onClick={() => setTriggerCondition((prev) => (prev === 'above' ? 'below' : 'above'))}
-                            >
-                              {triggerCondition === 'above' ? (
-                                <TrendingUpIcon color="success" />
-                              ) : (
-                                <TrendingDownIcon color="error" />
-                              )}
-                            </IconButton>
-                          </InputAdornment>
-                        ),
+                ) : (
+                  filteredClients.map((client) => (
+                    <Box
+                      key={client.address}
+                      sx={{
+                        p: 1,
+                        mb: 1,
+                        borderRadius: 1,
+                        border: 1,
+                        borderColor: client.selected ? 'primary.main' : 'divider',
+                        bgcolor: client.selected ? 'action.selected' : 'background.paper',
+                        opacity: client.selected ? 1 : 0.8,
                       }}
-                    />
-                  </Grid>
-                  {orderType === 'stop-limit' && (
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="Limit Price (Min Receive)"
-                        type="number"
-                        value={limitPrice}
-                        onChange={(e) => setLimitPrice(e.target.value)}
+                    >
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={client.selected}
+                            onChange={() => toggleClient(client.address)}
+                            size="small"
+                            sx={{ p: 0.5, mr: 1, mt: -3 }}
+                          />
+                        }
+                        label={
+                          <Box>
+                            <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                              <Typography variant="body2" fontFamily="monospace" fontWeight={600}>
+                                {client.address.substring(0, 5)}...{client.address.substring(39)}
+                              </Typography>
+                              <Chip label={client.walletType} size="small" sx={{ height: 16, fontSize: '0.6rem' }} />
+                            </Box>
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              USDC: {parseFloat(client.usdcBalance || '0').toFixed(2)}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ m: 0, width: '100%', alignItems: 'flex-start' }}
                       />
-                    </Grid>
-                  )}
-                </>
-              )}
-
-              {/* Row 4: Slippage (Market Only) */}
-              {orderType === 'market' && (
-                <Grid item xs={12}>
-                  <Box display="flex" alignItems="center" gap={2}>
-                    <Typography variant="body2">Slippage:</Typography>
-                    {['0.5', '1.0', '2.0'].map((val) => (
-                      <Chip
-                        key={val}
-                        label={`${val}%`}
-                        size="small"
-                        color={slippage === val ? 'primary' : 'default'}
-                        onClick={() => setSlippage(val)}
-                        clickable
-                      />
-                    ))}
-                  </Box>
-                </Grid>
-              )}
-
-              {/* Order Preview */}
-              <Grid item xs={12}>
-                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={6} md={3}>
-                      <Typography variant="caption" color="text.secondary">
-                        Pay
-                      </Typography>
-                      <Typography variant="body2" fontWeight={600}>
-                        {amountIn || '0'} {tokenInSymbol}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6} md={3}>
-                      <Typography variant="caption" color="text.secondary">
-                        Receive {orderType === 'market' ? '(Est.)' : '(Min)'}
-                      </Typography>
-                      <Typography variant="body2" fontWeight={600}>
-                        {orderType === 'market'
-                          ? quoteAmountOut
-                            ? parseFloat(quoteAmountOut).toFixed(6)
-                            : '0'
-                          : (orderType === 'limit' || orderType === 'stop-market') && triggerPrice && amountIn
-                            ? (parseFloat(amountIn) * parseFloat(triggerPrice)).toFixed(6)
-                            : orderType === 'stop-limit' && limitPrice && amountIn
-                              ? (parseFloat(amountIn) * parseFloat(limitPrice)).toFixed(6)
-                              : '-'}{' '}
-                        {tokenOutSymbol}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6} md={3}>
-                      <Typography variant="caption" color="text.secondary">
-                        Price
-                      </Typography>
-                      <Typography variant="body2" fontWeight={600}>
-                        {orderType === 'market' && quoteAmountOut && amountIn
-                          ? `1 ${tokenInSymbol} ≈ ${(parseFloat(quoteAmountOut) / parseFloat(amountIn)).toFixed(4)} ${tokenOutSymbol}`
-                          : triggerPrice
-                            ? `1 ${tokenInSymbol} = ${triggerPrice} ${tokenOutSymbol}`
-                            : '-'}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6} md={3}>
-                      <Typography variant="caption" color="text.secondary">
-                        Slippage / Router
-                      </Typography>
-                      <Typography variant="body2" fontWeight={600}>
-                        {orderType === 'market' ? `${slippage}%` : 'N/A'} • Uniswap V3
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                </Paper>
-              </Grid>
-
-              {/* Action Button */}
-              <Grid item xs={12}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="large"
-                  onClick={handleSubmit}
-                  disabled={isTrading || selectedClients.length === 0 || !amountIn}
-                  startIcon={isTrading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
-                >
-                  {isTrading ? 'Executing...' : orderType === 'market' ? 'Execute Swap' : 'Create Order'}
-                </Button>
-                {selectedClients.length > 1 && (
-                  <Typography variant="caption" align="center" display="block" sx={{ mt: 1, color: 'primary.main' }}>
-                    Executing for {selectedClients.length} selected clients
-                  </Typography>
+                    </Box>
+                  ))
                 )}
-              </Grid>
-            </Grid>
-          </Paper>
+              </Box>
 
-          <Divider sx={{ my: 4, borderColor: 'divider' }} />
-
-          {/* Conditional Orders Table */}
-          {/* {orders.length > 0 && ( */}
-          <Paper sx={{ p: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6" fontWeight={600}>
-                Orders
-              </Typography>
-              {isMonitoring && (
-                <Chip
-                  label="Monitoring"
-                  color="success"
-                  size="small"
-                  icon={<CircularProgress size={10} color="inherit" />}
-                />
-              )}
+              <Button
+                startIcon={<RefreshIcon />}
+                onClick={refreshClients}
+                size="small"
+                variant="outlined"
+                fullWidth
+                sx={{ mt: 1 }}
+              >
+                Refresh
+              </Button>
             </Box>
-            <Tabs
-              value={ordersTabValue}
-              onChange={(_, v) => setOrdersTabValue(v)}
-              sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+          )}
+        </Paper>
+
+        {/* === Order Entry Form === */}
+        <Paper elevation={2} sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          {/* Messages */}
+          {(message || tradeError) && (
+            <Alert
+              severity={message?.type === 'success' ? 'success' : 'error'}
+              onClose={() => setMessage(null)}
+              sx={{ mb: 2 }}
             >
-              <Tab label={`Pending (${pendingOrders.length})`} />
-              <Tab label={`Filled (${filledOrders.length})`} />
-              <Tab label={`Failed (${failedOrders.length})`} />
-            </Tabs>
-            <TableContainer sx={{ maxHeight: 300 }}>
-              <Table stickyHeader size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Pair</TableCell>
-                    <TableCell>Amt</TableCell>
-                    <TableCell>Trigger</TableCell>
-                    <TableCell>Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(ordersTabValue === 0 ? pendingOrders : ordersTabValue === 1 ? filledOrders : failedOrders).map(
-                    (o) => (
-                      <TableRow key={o.id}>
-                        <TableCell>{o.type}</TableCell>
-                        <TableCell>
-                          {o.tokenIn}/{o.tokenOut}
-                        </TableCell>
-                        <TableCell>{o.amountIn}</TableCell>
-                        <TableCell>
-                          {parseFloat(o.triggerPrice).toFixed(4)}
-                          {o.triggerCondition === 'above' ? ' (≥)' : ' (≤)'}
-                        </TableCell>
-                        <TableCell>
-                          <Chip label={o.status} size="small" color={o.status === 'filled' ? 'success' : 'default'} />
-                        </TableCell>
-                      </TableRow>
-                    ),
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-          {/* )} */}
-        </Grid>
-      </Grid>
+              {message?.text || tradeError}
+            </Alert>
+          )}
+
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Typography variant="h6" fontWeight={600}>
+              Order Entry
+            </Typography>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <Select value={orderType} onChange={(e) => setOrderType(e.target.value as OrderType)}>
+                <MenuItem value="market">
+                  <Box display="flex" gap={1} alignItems="center">
+                    <FlashOnIcon fontSize="small" /> Market
+                  </Box>
+                </MenuItem>
+                <MenuItem value="twap">
+                  <Box display="flex" gap={1} alignItems="center">
+                    <ScheduleIcon fontSize="small" /> TWAP
+                  </Box>
+                </MenuItem>
+                <MenuItem value="smart_market">
+                  <Box display="flex" gap={1} alignItems="center">
+                    <SmartToyIcon fontSize="small" /> Smart Market
+                  </Box>
+                </MenuItem>
+                <MenuItem value="smart_twap">
+                  <Box display="flex" gap={1} alignItems="center">
+                    <AutoGraphIcon fontSize="small" /> Smart TWAP
+                  </Box>
+                </MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+
+          <Grid container spacing={3}>
+            {/* Tokens */}
+            <Grid item xs={5}>
+              <TextField
+                select
+                fullWidth
+                label="Sell"
+                value={tokenInSymbol}
+                onChange={(e) => setTokenInSymbol(e.target.value)}
+              >
+                {tokenList.map((t) => (
+                  <MenuItem key={t.symbol} value={t.symbol}>
+                    {t.symbol}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={2} display="flex" justifyContent="center" alignItems="center">
+              <IconButton onClick={handleSwapTokens} color="primary">
+                <SwapHoriz />
+              </IconButton>
+            </Grid>
+            <Grid item xs={5}>
+              <TextField
+                select
+                fullWidth
+                label="Buy"
+                value={tokenOutSymbol}
+                onChange={(e) => setTokenOutSymbol(e.target.value)}
+              >
+                {tokenList.map((t) => (
+                  <MenuItem key={t.symbol} value={t.symbol}>
+                    {t.symbol}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            {/* Amount */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Amount"
+                type="number"
+                value={amountIn}
+                onChange={(e) => setAmountIn(e.target.value)}
+                InputProps={{
+                  endAdornment: isQuoting ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">
+                      {tokenInSymbol}
+                    </Typography>
+                  ),
+                }}
+              />
+            </Grid>
+
+            {/* Triggers */}
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                Triggers (Optional)
+              </Typography>
+              <Box display="flex" gap={2} flexWrap="wrap">
+                <Box flex={1} display="flex" gap={1}>
+                  <FormControl size="small" sx={{ width: 100 }}>
+                    <Select value={priceTriggerType} onChange={(e) => setPriceTriggerType(e.target.value as any)}>
+                      <MenuItem value="none">None</MenuItem>
+                      <MenuItem value=">=">Price &ge;</MenuItem>
+                      <MenuItem value="<=">Price &le;</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    placeholder="Trigger Price"
+                    fullWidth
+                    disabled={priceTriggerType === 'none'}
+                    value={priceTriggerValue}
+                    onChange={(e) => setPriceTriggerValue(e.target.value)}
+                  />
+                </Box>
+                <Box flex={1} display="flex" gap={1}>
+                  <FormControl size="small" sx={{ width: 100 }}>
+                    <Select value={timeTriggerType} onChange={(e) => setTimeTriggerType(e.target.value as any)}>
+                      <MenuItem value="none">None</MenuItem>
+                      <MenuItem value="at">Time At</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    type="datetime-local"
+                    fullWidth
+                    disabled={timeTriggerType === 'none'}
+                    value={timeTriggerValue}
+                    onChange={(e) => setTimeTriggerValue(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Box>
+              </Box>
+            </Grid>
+
+            {/* Slippage & Preview */}
+            <Grid item xs={12}>
+              <Box mb={2}>
+                <Typography variant="caption" color="text.secondary" gutterBottom>
+                  Slippage Tolerance
+                </Typography>
+                <Box display="flex" gap={1} mt={0.5}>
+                  {['0.05', '1.0', '2.0'].map((val) => (
+                    <Chip
+                      key={val}
+                      label={`${val}%`}
+                      onClick={() => setSlippage(val)}
+                      color={slippage === val ? 'primary' : 'default'}
+                      variant={slippage === val ? 'filled' : 'outlined'}
+                      size="small"
+                    />
+                  ))}
+                </Box>
+              </Box>
+
+              {/* COMPACT ORDER PREVIEW */}
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 1.5,
+                  bgcolor: 'action.hover',
+                  borderRadius: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 15,
+                  flexWrap: 'nowrap',
+                }}
+              >
+                <Chip
+                  label={orderType.replace('_', ' ').toUpperCase()}
+                  size="small"
+                  color="primary"
+                  sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }}
+                />
+
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography variant="body2" fontWeight={600}>
+                    {amountIn || '0'} {tokenInSymbol}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    →
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600} color={quoteAmountOut ? 'success.main' : 'text.primary'}>
+                    {quoteAmountOut ? parseFloat(quoteAmountOut).toFixed(4) : '-'} {tokenOutSymbol}
+                  </Typography>
+                </Box>
+
+                <Divider orientation="vertical" flexItem />
+
+                <Box display="flex" gap={2}>
+                  <Typography variant="caption" color="text.secondary">
+                    Rate:{' '}
+                    <Box component="span" fontWeight={600} color="text.primary">
+                      {quoteAmountOut && amountIn
+                        ? (parseFloat(quoteAmountOut) / parseFloat(amountIn)).toFixed(4)
+                        : '-'}
+                    </Box>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Slippage:{' '}
+                    <Box component="span" fontWeight={600} color="text.primary">
+                      {slippage}%
+                    </Box>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Router:{' '}
+                    <Box component="span" fontWeight={600} color="text.primary">
+                      Uniswap V3
+                    </Box>
+                  </Typography>
+                </Box>
+
+                {(priceTriggerType !== 'none' || timeTriggerType !== 'none') && (
+                  <>
+                    <Divider orientation="vertical" flexItem />
+                    <Box display="flex" gap={1} alignItems="center">
+                      {priceTriggerType !== 'none' && (
+                        <Chip
+                          icon={<TrendingUpIcon style={{ fontSize: 14 }} />}
+                          label={`${priceTriggerType} ${priceTriggerValue}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.65rem' }}
+                        />
+                      )}
+                      {timeTriggerType !== 'none' && (
+                        <Chip
+                          icon={<ScheduleIcon style={{ fontSize: 14 }} />}
+                          label={`At ${timeTriggerValue}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.65rem' }}
+                        />
+                      )}
+                    </Box>
+                  </>
+                )}
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Button
+                fullWidth
+                variant="contained"
+                size="large"
+                onClick={handleSubmit}
+                disabled={isTrading || selectedClients.length === 0 || !amountIn}
+                startIcon={isTrading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
+              >
+                {orderType === 'market' && priceTriggerType === 'none' && timeTriggerType === 'none'
+                  ? 'Execute Swap'
+                  : 'Submit Order'}
+              </Button>
+              {selectedClients.length > 0 && (
+                <Typography variant="caption" align="center" display="block" sx={{ mt: 1 }}>
+                  Applying to {selectedClients.length} Wallets
+                </Typography>
+              )}
+            </Grid>
+          </Grid>
+        </Paper>
+      </Box>
+
+      {/* 
+          BOTTOM ROW: Orders Table 
+          Full width
+      */}
+      {/* 
+          BOTTOM ROW: Orders Table 
+          Full width
+      */}
+      <Paper sx={{ mt: 2, flexShrink: 0, height: 350, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Box p={2} borderBottom={1} borderColor="divider">
+          <Typography variant="subtitle1" fontWeight={600}>
+            Active Orders & History
+          </Typography>
+        </Box>
+        <Tabs
+          value={tabValue}
+          onChange={(_, v) => setTabValue(v)}
+          sx={{ borderBottom: 1, borderColor: 'divider', px: 2, minHeight: 48 }}
+        >
+          <Tab label={`Pending (${pendingOrders.length})`} />
+          <Tab label={`Filled (${filledOrders.length})`} />
+          <Tab label={`Failed (${failedOrders.length})`} />
+        </Tabs>
+
+        <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+          <Table stickyHeader size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Type</TableCell>
+                <TableCell>Clients</TableCell>
+                <TableCell>Trade</TableCell>
+                <TableCell align="right">Amount</TableCell>
+                <TableCell align="right">Trigger</TableCell>
+                <TableCell>Condition</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(tabValue === 0 ? pendingOrders : tabValue === 1 ? filledOrders : failedOrders).map((order) => (
+                <TableRow key={order.id}>
+                  <TableCell>
+                    <Chip
+                      label={getOrderTypeLabel(order.type)}
+                      size="small"
+                      color={order.type.includes('smart') ? 'secondary' : 'primary'}
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {order.clientAddresses.length === 1 ? (
+                      <Typography variant="body2" fontFamily="monospace" fontSize={11}>
+                        {shortenAddress(order.clientAddresses[0])}
+                      </Typography>
+                    ) : (
+                      <Chip
+                        label={`${order.clientAddresses.length} clients`}
+                        size="small"
+                        icon={<PeopleIcon sx={{ fontSize: 14 }} />}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {order.tokenIn} → {order.tokenOut}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2">{order.amountIn}</Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2">
+                      {order.triggerPrice
+                        ? parseFloat(order.triggerPrice).toFixed(4)
+                        : order.timeTrigger
+                          ? new Date(order.timeTrigger).toLocaleTimeString()
+                          : '-'}
+                    </Typography>
+                    {order.limitPrice && (
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        Limit: {parseFloat(order.limitPrice).toFixed(4)}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {order.triggerCondition && (
+                      <Chip
+                        label={order.triggerCondition === 'below' ? 'Below' : 'Above'}
+                        size="small"
+                        color={order.triggerCondition === 'below' ? 'error' : 'success'}
+                        variant="outlined"
+                      />
+                    )}
+                    {order.timeTrigger && <Chip label="Time" size="small" variant="outlined" />}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={order.status}
+                      size="small"
+                      color={
+                        order.status === 'filled'
+                          ? 'success'
+                          : order.status === 'pending'
+                            ? 'warning'
+                            : order.status === 'triggered'
+                              ? 'info'
+                              : 'error'
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {order.status === 'pending' && (
+                      <IconButton size="small" color="error" onClick={() => handleDeleteOrder(order.id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {(tabValue === 0 ? pendingOrders : tabValue === 1 ? filledOrders : failedOrders).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} align="center">
+                    <Typography variant="body2" color="text.secondary" py={3}>
+                      No {tabValue === 0 ? 'pending' : tabValue === 1 ? 'filled' : 'failed'} orders
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
     </Box>
   )
 }
