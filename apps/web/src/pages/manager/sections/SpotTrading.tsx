@@ -32,7 +32,7 @@ import {
 } from '@mui/material'
 import GroupIcon from '@mui/icons-material/Group'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import SwapVertIcon from '@mui/icons-material/SwapVert'
+import SwapHoriz from '@mui/icons-material/SwapHoriz'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import BarChartIcon from '@mui/icons-material/BarChart'
@@ -40,6 +40,9 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import GpsFixedIcon from '@mui/icons-material/GpsFixed'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import FlashOnIcon from '@mui/icons-material/FlashOn'
+import ExpandLess from '@mui/icons-material/ExpandLess'
+import ExpandMore from '@mui/icons-material/ExpandMore'
+import { Collapse } from '@mui/material'
 
 import { useTradingModule } from '../../../hooks/useTradingModule'
 import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN } from '../../../contracts/TradingModule'
@@ -130,6 +133,7 @@ export default function SpotTrading() {
 
   const [chainId, setChainId] = useState(42161) // Default Arb One
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [isClientListOpen, setIsClientListOpen] = useState(true)
 
   // Helper to get full token objects
   const tokenIn = tokenList.find((t) => t.symbol === tokenInSymbol) || tokenList[0]
@@ -438,106 +442,130 @@ export default function SpotTrading() {
       <Grid container spacing={3}>
         {/* --- Left Column: Client Selection --- */}
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="subtitle2" fontWeight={600}>
-                <GroupIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                Clients
-              </Typography>
-              <Badge badgeContent={selectedClients.length} color="primary">
-                <Chip
-                  label={selectedClients.length > 1 ? 'Batch' : 'Single'}
-                  size="small"
-                  color={selectedClients.length > 1 ? 'primary' : 'default'}
-                />
-              </Badge>
+          <Paper sx={{ p: 2, height: 'fit-content', display: 'flex', flexDirection: 'column' }}>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={isClientListOpen ? 2 : 0}
+              onClick={() => setIsClientListOpen(!isClientListOpen)}
+              sx={{ cursor: 'pointer' }}
+            >
+              <Box display="flex" alignItems="center">
+                <Typography variant="subtitle2" fontWeight={600}>
+                  <GroupIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Clients
+                </Typography>
+                {!isClientListOpen && (
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    ({selectedClients.length} Selected)
+                  </Typography>
+                )}
+              </Box>
+              <Box display="flex" alignItems="center">
+                <Badge badgeContent={selectedClients.length} color="primary" sx={{ mr: 1 }}>
+                  <Chip
+                    label={selectedClients.length > 1 ? 'Batch' : 'Single'}
+                    size="small"
+                    color={selectedClients.length > 1 ? 'primary' : 'default'}
+                  />
+                </Badge>
+                <IconButton size="small">{isClientListOpen ? <ExpandLess /> : <ExpandMore />}</IconButton>
+              </Box>
             </Box>
 
-            {clients.length === 0 ? (
-              isLoadingClients ? (
-                <CircularProgress size={20} />
+            <Collapse in={isClientListOpen}>
+              {clients.length === 0 ? (
+                isLoadingClients ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <Alert severity="info">No clients</Alert>
+                )
               ) : (
-                <Alert severity="info">No clients</Alert>
-              )
-            ) : (
-              <>
-                <Box display="flex" gap={1} mb={2} flexWrap="wrap">
-                  <Chip
-                    label="All"
-                    size="small"
-                    onClick={() => setWalletTypeFilter('all')}
-                    color={walletTypeFilter === 'all' ? 'primary' : 'default'}
-                    variant={walletTypeFilter === 'all' ? 'filled' : 'outlined'}
-                  />
-                  <Chip
-                    label="Safe"
-                    size="small"
-                    onClick={() => setWalletTypeFilter('safe')}
-                    color={walletTypeFilter === 'safe' ? 'primary' : 'default'}
-                    variant={walletTypeFilter === 'safe' ? 'filled' : 'outlined'}
-                  />
-                  <Chip
-                    label="EOA"
-                    size="small"
-                    onClick={() => setWalletTypeFilter('eoa')}
-                    color={walletTypeFilter === 'eoa' ? 'primary' : 'default'}
-                    variant={walletTypeFilter === 'eoa' ? 'filled' : 'outlined'}
-                  />
-                </Box>
-
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={clients
-                        .filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
-                        .every((c) => c.selected)}
-                      onChange={() =>
-                        toggleSelectAll(
-                          clients.filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter),
-                        )
-                      }
+                <>
+                  <Box display="flex" gap={1} mb={2} flexWrap="wrap">
+                    <Chip
+                      label="All"
+                      size="small"
+                      onClick={() => setWalletTypeFilter('all')}
+                      color={walletTypeFilter === 'all' ? 'primary' : 'default'}
+                      variant={walletTypeFilter === 'all' ? 'filled' : 'outlined'}
                     />
-                  }
-                  label={<Typography variant="body2">Select All Visible</Typography>}
-                />
-                <Divider sx={{ my: 1 }} />
+                    <Chip
+                      label="Safe"
+                      size="small"
+                      onClick={() => setWalletTypeFilter('safe')}
+                      color={walletTypeFilter === 'safe' ? 'primary' : 'default'}
+                      variant={walletTypeFilter === 'safe' ? 'filled' : 'outlined'}
+                    />
+                    <Chip
+                      label="EOA"
+                      size="small"
+                      onClick={() => setWalletTypeFilter('eoa')}
+                      color={walletTypeFilter === 'eoa' ? 'primary' : 'default'}
+                      variant={walletTypeFilter === 'eoa' ? 'filled' : 'outlined'}
+                    />
+                  </Box>
 
-                <Box sx={{ flex: 1, overflow: 'auto', minHeight: 300 }}>
-                  {clients
-                    .filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
-                    .map((client) => (
-                      <FormControlLabel
-                        key={client.address}
-                        control={
-                          <Checkbox
-                            checked={client.selected}
-                            onChange={() => toggleClient(client.address)}
-                            size="small"
-                          />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={clients
+                          .filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
+                          .every((c) => c.selected)}
+                        onChange={() =>
+                          toggleSelectAll(
+                            clients.filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter),
+                          )
                         }
-                        label={
-                          <Box>
-                            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                              {client.address.substring(0, 6)}...{client.address.substring(38)}
-                            </Typography>
-                            <Box display="flex" gap={0.5}>
-                              <Chip
-                                label={client.walletType.toUpperCase()}
-                                size="small"
-                                sx={{ height: 16, fontSize: '0.6rem' }}
-                              />
-                            </Box>
-                          </Box>
-                        }
-                        sx={{ display: 'flex', mb: 1, alignItems: 'flex-start' }}
                       />
-                    ))}
-                </Box>
-              </>
-            )}
-            <Button startIcon={<RefreshIcon />} onClick={refreshClients} size="small" fullWidth sx={{ mt: 2 }}>
-              Refresh Clients
-            </Button>
+                    }
+                    label={<Typography variant="body2">Select All Visible</Typography>}
+                  />
+                  <Divider sx={{ my: 1 }} />
+
+                  <Box sx={{ flex: 1, overflow: 'auto', maxHeight: 400 }}>
+                    {clients
+                      .filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
+                      .map((client) => (
+                        <FormControlLabel
+                          key={client.address}
+                          control={
+                            <Checkbox
+                              checked={client.selected}
+                              onChange={() => toggleClient(client.address)}
+                              size="small"
+                              sx={{ mt: 0 }}
+                            />
+                          }
+                          label={
+                            <Box>
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                  {client.address.substring(0, 6)}...{client.address.substring(38)}
+                                </Typography>
+                                <Chip
+                                  label={client.walletType.toUpperCase()}
+                                  size="small"
+                                  sx={{ height: 16, fontSize: '0.6rem' }}
+                                />
+                              </Box>
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                USDC: {parseFloat(client.usdcBalance || '0').toFixed(2)} | WETH:{' '}
+                                {parseFloat(client.wethBalance || '0').toFixed(4)}
+                              </Typography>
+                            </Box>
+                          }
+                          sx={{ display: 'flex', mb: 1, alignItems: 'flex-start' }}
+                        />
+                      ))}
+                  </Box>
+                </>
+              )}
+              <Button startIcon={<RefreshIcon />} onClick={refreshClients} size="small" fullWidth sx={{ mt: 2 }}>
+                Refresh Clients
+              </Button>
+            </Collapse>
           </Paper>
         </Grid>
 
@@ -599,7 +627,7 @@ export default function SpotTrading() {
               </Grid>
               <Grid item xs={2} display="flex" alignItems="center" justifyContent="center">
                 <IconButton onClick={handleSwapTokens} color="primary">
-                  <SwapVertIcon />
+                  <SwapHoriz sx={{ fontSize: 40 }} />
                 </IconButton>
               </Grid>
               <Grid item xs={5}>
@@ -802,7 +830,7 @@ export default function SpotTrading() {
             >
               <Tab label={`Pending (${pendingOrders.length})`} />
               <Tab label={`Filled (${filledOrders.length})`} />
-              <Tab label={`History (${failedOrders.length})`} />
+              <Tab label={`Failed (${failedOrders.length})`} />
             </Tabs>
             <TableContainer sx={{ maxHeight: 300 }}>
               <Table stickyHeader size="small">

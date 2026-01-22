@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import PublicIcon from '@mui/icons-material/Public'
+import CloseIcon from '@mui/icons-material/Close'
 import {
   Box,
   Typography,
@@ -16,14 +18,29 @@ import {
   Tooltip,
   Chip,
   Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  IconButton,
 } from '@mui/material'
-import PublicIcon from '@mui/icons-material/Public'
 
 import { useManagerStats } from '../../../hooks/manager/useManagerStats'
 
 export default function Home() {
   const { summary, isLoading } = useManagerStats()
-  const [selectedChain, setSelectedChain] = useState('Arbitrum')
+  const [selectedChain, setSelectedChain] = useState('All')
+  const [clientDialogOpen, setClientDialogOpen] = useState(false)
+  const [selectedAsset, setSelectedAsset] = useState<any>(null)
+
+  const handleOpenClientDialog = (asset: any) => {
+    setSelectedAsset(asset)
+    setClientDialogOpen(true)
+  }
+
+  const handleCloseClientDialog = () => {
+    setClientDialogOpen(false)
+    setSelectedAsset(null)
+  }
 
   const formatUSD = (value: number) =>
     value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
@@ -39,7 +56,13 @@ export default function Home() {
 
   // Filter portfolio based on selected chain
   // Currently only Arbitrum has real data logic in the hook
-  const portfolioData = selectedChain === 'Arbitrum' ? summary.portfolio : []
+  const portfolioData = selectedChain === 'Arbitrum' || selectedChain === 'All' ? summary.portfolio : []
+
+  const getClientAssetBalance = (client: any, symbol: string) => {
+    if (symbol === 'USDC') return parseFloat(client.usdcBalance || '0')
+    if (symbol === 'WETH') return parseFloat(client.wethBalance || '0')
+    return 0
+  }
 
   return (
     <Box>
@@ -110,6 +133,7 @@ export default function Home() {
                 '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--color-border-light)' },
               }}
             >
+              <MenuItem value="All">All Chains</MenuItem>
               <MenuItem value="Arbitrum">Arbitrum</MenuItem>
               <MenuItem value="BNB">BNB Chain</MenuItem>
               <MenuItem value="Solana">Solana</MenuItem>
@@ -198,7 +222,12 @@ export default function Home() {
                           label={`${asset.holders.length} Clients`}
                           size="small"
                           variant="outlined"
-                          sx={{ cursor: 'help', borderColor: 'rgba(255,255,255,0.1)' }}
+                          onClick={() => handleOpenClientDialog(asset)}
+                          sx={{
+                            cursor: 'pointer',
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(255,255,255,0.05)' },
+                          }}
                         />
                       </Tooltip>
                     </TableCell>
@@ -208,6 +237,80 @@ export default function Home() {
             </TableBody>
           </Table>
         </TableContainer>
+
+        {/* Client Details Dialog */}
+        <Dialog
+          open={clientDialogOpen}
+          onClose={handleCloseClientDialog}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: 3, bgcolor: 'background.paper', backgroundImage: 'none' },
+          }}
+        >
+          <DialogTitle display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" alignItems="center" gap={1}>
+              {selectedAsset && (
+                <Avatar sx={{ width: 28, height: 28, fontSize: '0.8rem', bgcolor: 'primary.main' }}>
+                  {selectedAsset.symbol[0]}
+                </Avatar>
+              )}
+              <Typography variant="h6" fontWeight={600}>
+                {selectedAsset?.symbol} Distribution
+              </Typography>
+            </Box>
+            <IconButton onClick={handleCloseClientDialog} size="small">
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers sx={{ p: 0 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Client</TableCell>
+                  <TableCell align="right">Balance</TableCell>
+                  <TableCell align="right">Value (USD)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {selectedAsset?.holders.map((client: any) => {
+                  const balance = getClientAssetBalance(client, selectedAsset.symbol)
+                  // Assuming value is pro-rated or we calculate it.
+                  // AssetOverview has total value / total balance -> price.
+                  const price = selectedAsset.balance > 0 ? selectedAsset.value / selectedAsset.balance : 0
+                  const value = balance * price
+
+                  return (
+                    <TableRow key={client.address} hover>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="body2" fontFamily="monospace" fontWeight={500}>
+                            {client.address.substring(0, 6)}...{client.address.substring(38)}
+                          </Typography>
+                          <Chip
+                            label={client.walletType.toUpperCase()}
+                            size="small"
+                            sx={{ height: 16, fontSize: '0.6rem', mt: 0.5 }}
+                          />
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" fontFamily="monospace">
+                          {balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" fontWeight={500}>
+                          {formatUSD(value)}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </DialogContent>
+        </Dialog>
       </Box>
 
       {/* Asset-wise Performance Table (Placeholder/Legacy) */}

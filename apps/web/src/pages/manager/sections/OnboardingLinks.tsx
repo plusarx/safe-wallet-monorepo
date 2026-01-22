@@ -256,7 +256,7 @@ export default function OnboardingLinks() {
             >
               {isRegistered ? (
                 <>
-                  <strong>{managerInfo?.name}</strong>
+                  <strong>Hi {managerInfo?.name}!</strong>
                 </>
               ) : (
                 'You are not registered as a manager yet. Register first via the contract.'
