@@ -67,6 +67,9 @@ interface TriggerOrder {
   amountIn: string
   triggerPrice?: string
   limitPrice?: string // Added for new table compatibility
+  chunks?: string
+  slices?: string
+  duration?: string // minutes
   triggerCondition?: 'above' | 'below'
   timeTrigger?: string
   status: 'pending' | 'triggered' | 'filled' | 'cancelled' | 'failed' | 'partial'
@@ -112,6 +115,11 @@ export default function SpotTrading({
   const [tokenOutSymbol, setTokenOutSymbol] = useState(DEFAULT_TOKEN_LIST[1].symbol)
   const [amountIn, setAmountIn] = useState('')
   const [slippage, setSlippage] = useState('1.0') // Default 1%
+
+  // Advanced Params
+  const [chunks, setChunks] = useState('')
+  const [slices, setSlices] = useState('')
+  const [duration, setDuration] = useState('')
 
   // Triggers
   const [priceTriggerType, setPriceTriggerType] = useState<'none' | '>=' | '<='>('none')
@@ -271,6 +279,9 @@ export default function SpotTrading({
         triggerPrice: priceTriggerType !== 'none' ? priceTriggerValue : undefined,
         triggerCondition: priceTriggerType === 'none' ? undefined : priceTriggerType === '>=' ? 'above' : 'below',
         timeTrigger: timeTriggerType !== 'none' ? timeTriggerValue : undefined,
+        chunks: orderType === 'smart_market' || orderType === 'smart_twap' ? chunks : undefined,
+        slices: orderType === 'twap' || orderType === 'smart_twap' ? slices : undefined,
+        duration: orderType === 'twap' || orderType === 'smart_twap' ? duration : undefined,
         status: 'pending',
         createdAt: new Date().toISOString(),
       }
@@ -280,6 +291,9 @@ export default function SpotTrading({
       localStorage.setItem(ORDERS_KEY, JSON.stringify(updated.slice().reverse())) // Assuming storage likes append? keeping simple
       setMessage({ type: 'success', text: 'Order Created!' })
       setAmountIn('')
+      setChunks('')
+      setSlices('')
+      setDuration('')
     }
   }
 
@@ -528,6 +542,41 @@ export default function SpotTrading({
               />
             </Grid>
 
+            {/* Advanced Order Inputs */}
+            {(orderType === 'smart_market' || orderType === 'smart_twap') && (
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Chunks"
+                  type="number"
+                  value={chunks}
+                  onChange={(e) => setChunks(e.target.value)}
+                />
+              </Grid>
+            )}
+            {(orderType === 'twap' || orderType === 'smart_twap') && (
+              <>
+                <Grid item xs={orderType === 'smart_twap' ? 6 : 6}>
+                  <TextField
+                    fullWidth
+                    label="Slices"
+                    type="number"
+                    value={slices}
+                    onChange={(e) => setSlices(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={orderType === 'smart_twap' ? 12 : 6}>
+                  <TextField
+                    fullWidth
+                    label="Duration (Minutes)"
+                    type="number"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                  />
+                </Grid>
+              </>
+            )}
+
             {/* Triggers */}
             <Grid item xs={12}>
               <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
@@ -647,6 +696,33 @@ export default function SpotTrading({
                     </Box>
                   </Typography>
                 </Box>
+                {(chunks || slices || duration) && <Divider orientation="vertical" flexItem />}
+                <Box display="flex" gap={2}>
+                  {chunks && (orderType === 'smart_market' || orderType === 'smart_twap') && (
+                    <Typography variant="caption" color="text.secondary">
+                      Chunks:{' '}
+                      <Box component="span" fontWeight={600} color="text.primary">
+                        {chunks}
+                      </Box>
+                    </Typography>
+                  )}
+                  {slices && (orderType === 'twap' || orderType === 'smart_twap') && (
+                    <Typography variant="caption" color="text.secondary">
+                      Slices:{' '}
+                      <Box component="span" fontWeight={600} color="text.primary">
+                        {slices}
+                      </Box>
+                    </Typography>
+                  )}
+                  {duration && (orderType === 'twap' || orderType === 'smart_twap') && (
+                    <Typography variant="caption" color="text.secondary">
+                      Duration:{' '}
+                      <Box component="span" fontWeight={600} color="text.primary">
+                        {duration}m
+                      </Box>
+                    </Typography>
+                  )}
+                </Box>
 
                 {(priceTriggerType !== 'none' || timeTriggerType !== 'none') && (
                   <>
@@ -699,10 +775,6 @@ export default function SpotTrading({
         </Paper>
       </Box>
 
-      {/* 
-          BOTTOM ROW: Orders Table 
-          Full width
-      */}
       {/* 
           BOTTOM ROW: Orders Table 
           Full width
