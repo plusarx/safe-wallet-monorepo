@@ -286,12 +286,12 @@ export default function OnboardingLinks() {
                 onClick={() => setSelectedType('multisig')}
                 icon={<AccountBalanceWalletIcon />}
               />
-              <Chip
+              {/* <Chip
                 label="EOA (EIP-7702)"
                 variant={selectedType === 'eoa' ? 'filled' : 'outlined'}
                 color={selectedType === 'eoa' ? 'primary' : 'default'}
                 onClick={() => setSelectedType('eoa')}
-              />
+              /> */}
             </Box>
 
             <Button

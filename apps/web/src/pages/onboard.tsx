@@ -66,19 +66,21 @@ export default function ClientOnboarding() {
   } = useSafeSDK()
 
   // EIP-7702 Hook (multi-wallet support)
+  // EIP-7702 Hook (multi-wallet support)
   const {
-    isLoading: is7702Loading,
-    error: error7702,
-    state: state7702,
-    connectEOA,
-    requestSmartAccountUpgrade,
-    enableModulesAndDelegate,
+    // isLoading: is7702Loading,
+    // error: error7702,
+    // state: state7702,
+    // connectEOA,
+    // requestSmartAccountUpgrade,
+    // enableModulesAndDelegate,
     getWalletSupportInfo,
     executeBatch,
   } = useEIP7702()
 
   // Get wallet support info
-  const walletInfo = getWalletSupportInfo()
+  // Get wallet support info
+  // const walletInfo = getWalletSupportInfo()
 
   // Set wallet type from query
   useEffect(() => {
@@ -88,31 +90,33 @@ export default function ClientOnboarding() {
       setConnectError('')
       disconnect()
     }
-  }, [queryType])
+  }, [queryType, disconnect])
 
   // Load manager info
   useEffect(() => {
+    const loadManagerInfo = async () => {
+      try {
+        const info = await getManager(managerAddress)
+        if (info && info.isActive) {
+          setManagerInfo({
+            name: info.name,
+            feeRate: `${Number(info.feeRate) / 100}%`,
+          })
+        }
+      } catch (err) {
+        console.error('Failed to load manager info:', err)
+      }
+    }
+
     if (managerAddress) {
       loadManagerInfo()
     }
-  }, [managerAddress])
-
-  const loadManagerInfo = async () => {
-    try {
-      const info = await getManager(managerAddress)
-      if (info && info.isActive) {
-        setManagerInfo({
-          name: info.name,
-          feeRate: `${Number(info.feeRate) / 100}%`,
-        })
-      }
-    } catch (err) {
-      console.error('Failed to load manager info:', err)
-    }
-  }
+  }, [managerAddress, getManager])
 
   // ============ EOA FLOW (EIP-7702) ============
 
+  // NOTE: EOA Flow temporarily disabled in UI
+  /*
   // Step 1: Connect EOA wallet
   const handleConnectEOA = async () => {
     setConnectError('')
@@ -147,6 +151,7 @@ export default function ClientOnboarding() {
       setActiveStep(3)
     }
   }
+  */
 
   // ============ SAFE FLOW ============
 
@@ -322,8 +327,8 @@ export default function ClientOnboarding() {
             centered
             sx={{ mb: 2 }}
           >
-            <Tab value="eoa" label="EOA (EIP-7702)" icon={<SmartToyIcon />} iconPosition="start" />
             <Tab value="safe" label="Safe Wallet" icon={<SecurityIcon />} iconPosition="start" />
+            {/* <Tab value="eoa" label="EOA (EIP-7702)" icon={<SmartToyIcon />} iconPosition="start" /> */}
           </Tabs>
 
           {managerInfo && (
@@ -337,7 +342,7 @@ export default function ClientOnboarding() {
         </Box>
 
         {/* ============ EOA FLOW (EIP-7702) ============ */}
-        {walletType === 'eoa' && (
+        {/* {walletType === 'eoa' && (
           <Stepper activeStep={activeStep} orientation="vertical">
             <Step>
               <StepLabel>Connect Wallet</StepLabel>
@@ -346,7 +351,6 @@ export default function ClientOnboarding() {
                   Connect MetaMask, Rabby, or Trust Wallet (EIP-7702 supported)
                 </Typography>
 
-                {/* Wallet Support Info */}
                 {state7702.isConnected && (
                   <Alert
                     severity={walletInfo.supported ? 'success' : 'warning'}
@@ -471,7 +475,7 @@ export default function ClientOnboarding() {
               </StepContent>
             </Step>
           </Stepper>
-        )}
+        )} */}
 
         {/* ============ SAFE FLOW ============ */}
         {walletType === 'safe' && (
