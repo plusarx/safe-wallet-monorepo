@@ -50,6 +50,9 @@ import type { ClientInfo } from '../../../hooks/manager/useManagerClients'
 
 export type OrderType = 'market' | 'twap' | 'smart_market' | 'smart_twap'
 
+// Timezone Options
+const TIMEZONES = ['UTC', 'GMT', 'EST', 'CST', 'MST', 'PST', 'IST', 'CET', 'JST', 'AEST']
+
 interface SpotTradingProps {
   clients: ClientInfo[]
   isLoadingClients: boolean
@@ -67,12 +70,14 @@ interface TriggerOrder {
   tokenOut: string
   amountIn: string
   triggerPrice?: string
-  limitPrice?: string // Added for new table compatibility
+  limitPrice?: string
   chunks?: string
   slices?: string
-  duration?: string // minutes
+  duration?: string
   triggerCondition?: 'above' | 'below'
   timeTrigger?: string
+  timezone?: string
+  triggerOperator?: 'AND' | 'OR'
   status: 'pending' | 'triggered' | 'filled' | 'cancelled' | 'failed' | 'partial'
   createdAt: string
   triggeredAt?: string
@@ -118,8 +123,8 @@ export default function SpotTrading({
   const [slippage, setSlippage] = useState('1.0') // Default 1%
 
   // Advanced Params
-  const [chunks, setChunks] = useState('')
-  const [slices, setSlices] = useState('')
+  const [chunks, setChunks] = useState('5') // Default 5
+  const [slices, setSlices] = useState('2') // Default 2
   const [duration, setDuration] = useState('')
 
   // Triggers
@@ -127,6 +132,8 @@ export default function SpotTrading({
   const [priceTriggerValue, setPriceTriggerValue] = useState('')
   const [timeTriggerType, setTimeTriggerType] = useState<'none' | 'at'>('none')
   const [timeTriggerValue, setTimeTriggerValue] = useState('')
+  const [timezone, setTimezone] = useState('UTC') // Default UTC
+  const [triggerOperator, setTriggerOperator] = useState<'AND' | 'OR'>('OR') // Default OR
 
   // Quote / Estimation
   const [quoteAmountOut, setQuoteAmountOut] = useState('')
@@ -241,6 +248,8 @@ export default function SpotTrading({
         triggerPrice: priceTriggerType !== 'none' ? priceTriggerValue : undefined,
         triggerCondition: priceTriggerType === 'none' ? undefined : priceTriggerType === '>=' ? 'above' : 'below',
         timeTrigger: timeTriggerType !== 'none' ? timeTriggerValue : undefined,
+        timezone: timeTriggerType !== 'none' ? timezone : undefined,
+        triggerOperator: (priceTriggerType !== 'none' && timeTriggerType !== 'none') ? triggerOperator : undefined,
         chunks: orderType === 'smart_market' || orderType === 'smart_twap' ? chunks : undefined,
         slices: orderType === 'twap' || orderType === 'smart_twap' ? slices : undefined,
         duration: orderType === 'twap' || orderType === 'smart_twap' ? duration : undefined,
@@ -540,6 +549,8 @@ export default function SpotTrading({
                   type="number"
                   value={chunks}
                   onChange={(e) => setChunks(e.target.value)}
+                  inputProps={{ min: 3, max: 10 }}
+                  helperText="3-10 chunks"
                 />
               </Grid>
             )}
@@ -552,6 +563,8 @@ export default function SpotTrading({
                     type="number"
                     value={slices}
                     onChange={(e) => setSlices(e.target.value)}
+                    inputProps={{ min: 2, max: 20 }}
+                    helperText="2-20 slices"
                   />
                 </Grid>
                 <Grid item xs={orderType === 'smart_twap' ? 12 : 6}>
@@ -571,7 +584,8 @@ export default function SpotTrading({
               <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
                 Triggers (Optional)
               </Typography>
-              <Box display="flex" gap={2} flexWrap="wrap">
+              <Box display="flex" gap={2} flexWrap="wrap" alignItems="flex-start">
+                {/* Price Trigger */}
                 <Box flex={1} display="flex" gap={1}>
                   <FormControl size="small" sx={{ width: 100 }}>
                     <Select value={priceTriggerType} onChange={(e) => setPriceTriggerType(e.target.value as any)}>
@@ -589,6 +603,22 @@ export default function SpotTrading({
                     onChange={(e) => setPriceTriggerValue(e.target.value)}
                   />
                 </Box>
+
+                {/* AND/OR Operator Toggle */}
+                {priceTriggerType !== 'none' && timeTriggerType !== 'none' && (
+                  <Box display="flex" alignItems="center" justifyContent="center" sx={{ minWidth: 50 }}>
+                    <Chip
+                      label={triggerOperator}
+                      onClick={() => setTriggerOperator(prev => prev === 'AND' ? 'OR' : 'AND')}
+                      color={triggerOperator === 'AND' ? 'primary' : 'default'}
+                      variant={triggerOperator === 'AND' ? 'filled' : 'outlined'}
+                      size="small"
+                      sx={{ cursor: 'pointer', fontWeight: 700, minWidth: 48 }}
+                    />
+                  </Box>
+                )}
+
+                {/* Time Trigger + Timezone */}
                 <Box flex={1} display="flex" gap={1}>
                   <FormControl size="small" sx={{ width: 100 }}>
                     <Select value={timeTriggerType} onChange={(e) => setTimeTriggerType(e.target.value as any)}>
@@ -605,6 +635,15 @@ export default function SpotTrading({
                     onChange={(e) => setTimeTriggerValue(e.target.value)}
                     InputLabelProps={{ shrink: true }}
                   />
+                  {timeTriggerType !== 'none' && (
+                    <FormControl size="small" sx={{ minWidth: 80 }}>
+                      <Select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                        {TIMEZONES.map((tz) => (
+                          <MenuItem key={tz} value={tz}>{tz}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
                 </Box>
               </Box>
             </Grid>
@@ -682,6 +721,12 @@ export default function SpotTrading({
                     Router:{' '}
                     <Box component="span" fontWeight={600} color="text.primary">
                       Uniswap V3
+                    </Box>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Price Impact:{' '}
+                    <Box component="span" fontWeight={600} color="text.primary">
+                      Price Impact
                     </Box>
                   </Typography>
                 </Box>
