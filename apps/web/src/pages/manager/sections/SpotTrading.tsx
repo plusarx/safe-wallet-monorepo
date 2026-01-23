@@ -41,7 +41,8 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import PeopleIcon from '@mui/icons-material/People'
 import { Tabs, Tab } from '@mui/material'
 
-import { useOrderEngine, OrderType as EngineOrderType } from '../../../hooks/useOrderEngine'
+import type { OrderType as EngineOrderType } from '../../../hooks/useOrderEngine';
+import { useOrderEngine } from '../../../hooks/useOrderEngine'
 import { useTradingModule } from '../../../hooks/useTradingModule'
 import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN } from '../../../contracts/TradingModule'
 import type { ClientInfo } from '../../../hooks/manager/useManagerClients'

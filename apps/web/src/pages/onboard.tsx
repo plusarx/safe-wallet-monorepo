@@ -22,12 +22,9 @@ import {
   TextField,
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import SecurityIcon from '@mui/icons-material/Security'
-import SmartToyIcon from '@mui/icons-material/SmartToy'
-import WarningIcon from '@mui/icons-material/Warning'
 import { useDelegationModule, PERMISSION } from '../hooks/useDelegationModule'
 import { DELEGATION_MODULE_ADDRESSES } from '../contracts/DelegationModule'
 import { useSafeSDK } from '../hooks/useSafeSDK'
@@ -74,7 +71,7 @@ export default function ClientOnboarding() {
     // connectEOA,
     // requestSmartAccountUpgrade,
     // enableModulesAndDelegate,
-    getWalletSupportInfo,
+    getWalletSupportInfo: _getWalletSupportInfo,
     executeBatch,
   } = useEIP7702()
 
