@@ -571,6 +571,26 @@ export function useOrderEngine() {
     }, [])
 
     // -------------------------------------------------------------------------
+    // GET ORDER HISTORY
+    // -------------------------------------------------------------------------
+
+    const getOrderHistory = useCallback((): OrderState[] => {
+        try {
+            const stored = localStorage.getItem('order_engine_orders')
+            if (!stored) return []
+            const parsed = JSON.parse(stored)
+            return parsed.map((o: any) => ({
+                ...o,
+                createdAt: new Date(o.createdAt),
+                updatedAt: new Date(o.updatedAt),
+            }))
+        } catch (e) {
+            console.error('Failed to load order history:', e)
+            return []
+        }
+    }, [])
+
+    // -------------------------------------------------------------------------
     // RETURN
     // -------------------------------------------------------------------------
 
@@ -584,6 +604,7 @@ export function useOrderEngine() {
         executeOrder,
         cancelOrder,
         getQuote,
+        getOrderHistory,
 
         // Constants
         FEE_TIERS,

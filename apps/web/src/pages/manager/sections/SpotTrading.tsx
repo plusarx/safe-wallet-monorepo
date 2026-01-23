@@ -114,6 +114,7 @@ export default function SpotTrading({
     error: tradeError,
     executeOrder,
     cancelOrder,
+    getOrderHistory,
   } = useOrderEngine()
 
   const [orderType, setOrderType] = useState<OrderType>('market')
@@ -143,12 +144,67 @@ export default function SpotTrading({
 
   // --- Orders State ---
   const [orders, setOrders] = useState<TriggerOrder[]>([])
+  const [executedOrders, setExecutedOrders] = useState<any[]>([])
   const [tabValue, setTabValue] = useState(0)
 
-  // Derived Lists
+  // Derived Lists - Merge trigger orders with executed orders from engine
   const pendingOrders = orders.filter((o) => ['pending', 'triggered'].includes(o.status))
-  const filledOrders = orders.filter((o) => o.status === 'filled')
-  const failedOrders = orders.filter((o) => ['cancelled', 'failed'].includes(o.status))
+
+  // Convert executed orders to display format and merge with filled trigger orders
+  const executedFilledOrders: TriggerOrder[] = executedOrders
+    .filter((o) => o.status === 'filled')
+    .map((o) => ({
+      id: o.id,
+      type: o.params?.orderType || 'market',
+      clientAddresses: o.params?.clientAddresses || [],
+      tokenIn: o.params?.tokenIn?.symbol || '',
+      tokenOut: o.params?.tokenOut?.symbol || '',
+      amountIn: o.params?.totalAmount || o.executedVolume || '0',
+      status: o.status as 'filled',
+      createdAt: typeof o.createdAt === 'string' ? o.createdAt : o.createdAt?.toISOString?.() || new Date().toISOString(),
+      // Optional trigger properties (not applicable for immediate orders)
+      triggerPrice: undefined,
+      triggerCondition: undefined,
+      timeTrigger: undefined,
+      timezone: undefined,
+      triggerOperator: undefined,
+      chunks: o.params?.chunks,
+      slices: o.params?.slices,
+      duration: o.params?.durationMinutes,
+      limitPrice: undefined,
+    }))
+  const filledOrders = [
+    ...orders.filter((o) => o.status === 'filled'),
+    ...executedFilledOrders,
+  ]
+
+  // Same for failed orders
+  const executedFailedOrders: TriggerOrder[] = executedOrders
+    .filter((o) => ['cancelled', 'failed'].includes(o.status))
+    .map((o) => ({
+      id: o.id,
+      type: o.params?.orderType || 'market',
+      clientAddresses: o.params?.clientAddresses || [],
+      tokenIn: o.params?.tokenIn?.symbol || '',
+      tokenOut: o.params?.tokenOut?.symbol || '',
+      amountIn: o.params?.totalAmount || '0',
+      status: o.status as 'failed' | 'cancelled',
+      createdAt: typeof o.createdAt === 'string' ? o.createdAt : o.createdAt?.toISOString?.() || new Date().toISOString(),
+      // Optional trigger properties (not applicable for immediate orders)
+      triggerPrice: undefined,
+      triggerCondition: undefined,
+      timeTrigger: undefined,
+      timezone: undefined,
+      triggerOperator: undefined,
+      chunks: o.params?.chunks,
+      slices: o.params?.slices,
+      duration: o.params?.durationMinutes,
+      limitPrice: undefined,
+    }))
+  const failedOrders = [
+    ...orders.filter((o) => ['cancelled', 'failed'].includes(o.status)),
+    ...executedFailedOrders,
+  ]
 
   // Helpers
   const shortenAddress = (addr: string) => `${addr.substring(0, 5)}...${addr.substring(addr.length - 4)}`
@@ -179,7 +235,7 @@ export default function SpotTrading({
 
   // Load Tokens and Orders
   useEffect(() => {
-    // Orders
+    // Trigger Orders
     const saved = localStorage.getItem(ORDERS_KEY)
     if (saved) {
       try {
@@ -189,13 +245,17 @@ export default function SpotTrading({
       }
     }
 
+    // Executed Orders from Order Engine
+    const history = getOrderHistory()
+    setExecutedOrders(history)
+
     // Tokens (Mock / Chain load)
     const cId = 42161
     const tokens = TOKENS_BY_CHAIN[cId]
     if (tokens) {
       setTokenList(Object.values(tokens))
     }
-  }, [])
+  }, [getOrderHistory])
 
   // Quote Logic
   useEffect(() => {
@@ -286,6 +346,11 @@ export default function SpotTrading({
         orderType === 'twap' ? 'TWAP' :
           orderType === 'smart_market' ? 'Smart Market' : 'Smart TWAP'
       setMessage({ type: 'success', text: `${orderLabel} Order Executed!` })
+
+      // Refresh executed orders to update history table
+      const updatedHistory = getOrderHistory()
+      setExecutedOrders(updatedHistory)
+
       setAmountIn('')
       setChunks('')
       setSlices('')
