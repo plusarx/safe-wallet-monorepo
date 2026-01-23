@@ -374,6 +374,10 @@ export function useOrderEngine() {
         // Create chunk execution promises with random jitter
         const chunkPromises: Promise<ExecutionResult>[] = []
 
+        // Get ONE quote upfront for consistent fill price across all chunks
+        const quote = await getQuote(tokenIn.address, tokenOut.address, chunkAmount, tokenIn.decimals, tokenOut.decimals)
+        const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+
         for (let i = 0; i < chunks; i++) {
             const jitterMs = randomInt(100, 800) // 100-800ms random delay
 
@@ -382,10 +386,6 @@ export function useOrderEngine() {
 
             chunkPromises.push(
                 sleep(jitterMs).then(async () => {
-                    // Get fresh quote
-                    const quote = await getQuote(tokenIn.address, tokenOut.address, chunkAmount, tokenIn.decimals, tokenOut.decimals)
-                    const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
-
                     if (shuffledClients.length === 1) {
                         return executeSingleTrade(shuffledClients[0], tokenIn, tokenOut, chunkAmount, minOut, deadline)
                     } else {
