@@ -41,6 +41,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import PeopleIcon from '@mui/icons-material/People'
 import { Tabs, Tab } from '@mui/material'
 
+import { useOrderEngine, OrderType as EngineOrderType } from '../../../hooks/useOrderEngine'
 import { useTradingModule } from '../../../hooks/useTradingModule'
 import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN } from '../../../contracts/TradingModule'
 import type { ClientInfo } from '../../../hooks/manager/useManagerClients'
@@ -100,14 +101,14 @@ export default function SpotTrading({
   const [walletTypeFilter, setWalletTypeFilter] = useState<'all' | 'eoa' | 'safe'>('all')
 
   // --- Trading Form State ---
+  const { getQuote } = useTradingModule()
   const {
-    isLoading: isTrading,
+    isExecuting: isTrading,
+    currentOrder,
     error: tradeError,
-    executeTrade,
-    executeBatchTrade,
-
-    getQuote,
-  } = useTradingModule()
+    executeOrder,
+    cancelOrder,
+  } = useOrderEngine()
 
   const [orderType, setOrderType] = useState<OrderType>('market')
   const [tokenList, setTokenList] = useState(DEFAULT_TOKEN_LIST)
@@ -228,47 +229,8 @@ export default function SpotTrading({
       return
     }
 
-    // Prepare Execution
-    if (orderType === 'market' && priceTriggerType === 'none' && timeTriggerType === 'none') {
-      // Immediate Execution
-      try {
-        const deadline = Math.floor(Date.now() / 1000) + 600
-        const estOut = parseFloat(quoteAmountOut || '0')
-        const minOut = (estOut * (1 - parseFloat(slippage) / 100)).toFixed(tokenOut.decimals)
-
-        if (selectedClients.length === 1) {
-          await executeTrade({
-            safe: selectedClients[0].address,
-            tokenIn: tokenIn.address,
-            tokenOut: tokenOut.address,
-            amountIn,
-            minAmountOut: minOut,
-            feeTier: FEE_TIERS.MEDIUM,
-            deadline,
-            tokenInDecimals: tokenIn.decimals,
-            tokenOutDecimals: tokenOut.decimals,
-          })
-        } else {
-          await executeBatchTrade({
-            safes: selectedClients.map((c) => c.address),
-            tokenIn: tokenIn.address,
-            tokenOut: tokenOut.address,
-            amounts: selectedClients.map(() => amountIn),
-            minAmountOut: minOut,
-            feeTier: FEE_TIERS.MEDIUM,
-            deadline,
-            tokenInDecimals: tokenIn.decimals,
-            tokenOutDecimals: tokenOut.decimals,
-          })
-        }
-        setMessage({ type: 'success', text: 'Market Trade Executed!' })
-        setAmountIn('')
-      } catch (e: any) {
-        console.error(e)
-        setMessage({ type: 'error', text: e.message || 'Trade Failed' })
-      }
-    } else {
-      // Create Trigger Order
+    // Has price/time triggers? Save as pending order for monitoring
+    if (priceTriggerType !== 'none' || timeTriggerType !== 'none') {
       const newOrder: TriggerOrder = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         type: orderType,
@@ -285,15 +247,42 @@ export default function SpotTrading({
         status: 'pending',
         createdAt: new Date().toISOString(),
       }
-
       const updated = [newOrder, ...orders]
       setOrders(updated)
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(updated.slice().reverse())) // Assuming storage likes append? keeping simple
-      setMessage({ type: 'success', text: 'Order Created!' })
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(updated.slice().reverse()))
+      setMessage({ type: 'success', text: 'Trigger Order Created!' })
       setAmountIn('')
       setChunks('')
       setSlices('')
       setDuration('')
+      return
+    }
+
+    // Immediate execution via Order Engine
+    try {
+      await executeOrder({
+        orderType: orderType as EngineOrderType,
+        clientAddresses: selectedClients.map((c) => c.address),
+        tokenIn,
+        tokenOut,
+        totalAmount: amountIn,
+        slippage: parseFloat(slippage),
+        slices: slices ? parseInt(slices, 10) : undefined,
+        durationMinutes: duration ? parseInt(duration, 10) : undefined,
+        chunks: chunks ? parseInt(chunks, 10) : undefined,
+      })
+
+      const orderLabel = orderType === 'market' ? 'Market' :
+        orderType === 'twap' ? 'TWAP' :
+          orderType === 'smart_market' ? 'Smart Market' : 'Smart TWAP'
+      setMessage({ type: 'success', text: `${orderLabel} Order Executed!` })
+      setAmountIn('')
+      setChunks('')
+      setSlices('')
+      setDuration('')
+    } catch (e: any) {
+      console.error(e)
+      setMessage({ type: 'error', text: e.message || 'Order Execution Failed' })
     }
   }
 
@@ -753,6 +742,54 @@ export default function SpotTrading({
             </Grid>
 
             <Grid item xs={12}>
+              {/* Execution Progress */}
+              {currentOrder && isTrading && (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    mb: 2,
+                    bgcolor: 'action.hover',
+                    borderColor: 'primary.main'
+                  }}
+                >
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      Executing {orderType.replace('_', ' ').toUpperCase()}
+                    </Typography>
+                    <Chip
+                      label={`${currentOrder.executedSlices}/${currentOrder.totalSlices} slices`}
+                      size="small"
+                      color="primary"
+                    />
+                  </Box>
+                  <Box sx={{ width: '100%', bgcolor: 'grey.800', borderRadius: 1, height: 8 }}>
+                    <Box
+                      sx={{
+                        width: `${currentOrder.progress}%`,
+                        bgcolor: 'primary.main',
+                        height: '100%',
+                        borderRadius: 1,
+                        transition: 'width 0.3s ease',
+                      }}
+                    />
+                  </Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
+                    <Typography variant="caption" color="text.secondary">
+                      Volume: {currentOrder.executedVolume} {tokenInSymbol}
+                    </Typography>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={cancelOrder}
+                      variant="outlined"
+                    >
+                      Cancel
+                    </Button>
+                  </Box>
+                </Paper>
+              )}
+
               <Button
                 fullWidth
                 variant="contained"
@@ -761,9 +798,11 @@ export default function SpotTrading({
                 disabled={isTrading || selectedClients.length === 0 || !amountIn}
                 startIcon={isTrading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
               >
-                {orderType === 'market' && priceTriggerType === 'none' && timeTriggerType === 'none'
-                  ? 'Execute Swap'
-                  : 'Submit Order'}
+                {priceTriggerType !== 'none' || timeTriggerType !== 'none'
+                  ? 'Create Trigger Order'
+                  : orderType === 'market'
+                    ? 'Execute Swap'
+                    : `Execute ${orderType.replace('_', ' ').toUpperCase()}`}
               </Button>
               {selectedClients.length > 0 && (
                 <Typography variant="caption" align="center" display="block" sx={{ mt: 1 }}>
