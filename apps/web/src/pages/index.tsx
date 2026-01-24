@@ -195,6 +195,19 @@ const IndexPage: NextPage = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Footer */}
+      <Typography
+        variant="body2"
+        sx={{
+          position: 'absolute',
+          bottom: 24,
+          color: '#888888',
+          textAlign: 'center',
+        }}
+      >
+        © 2025 PulsarX. All rights reserved.
+      </Typography>
     </Box>
   )
 }

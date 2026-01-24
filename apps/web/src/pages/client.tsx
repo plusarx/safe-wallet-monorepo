@@ -284,6 +284,18 @@ export default function ClientDashboard() {
           {error}
         </Alert>
       )}
+      {/* Footer */}
+      <Typography
+        variant="body2"
+        sx={{
+          textAlign: 'center',
+          color: 'text.secondary',
+          py: 4,
+          mt: 4,
+        }}
+      >
+        © 2025 PulsarX. All rights reserved.
+      </Typography>
     </Container>
   )
 }
