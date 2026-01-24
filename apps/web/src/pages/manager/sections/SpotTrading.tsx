@@ -41,11 +41,12 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import PeopleIcon from '@mui/icons-material/People'
 import { Tabs, Tab } from '@mui/material'
 
-import type { OrderType as EngineOrderType } from '../../../hooks/useOrderEngine';
+import type { OrderType as EngineOrderType } from '../../../hooks/useOrderEngine'
 import { useOrderEngine } from '../../../hooks/useOrderEngine'
 import { useTradingModule } from '../../../hooks/useTradingModule'
 import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN } from '../../../contracts/TradingModule'
 import type { ClientInfo } from '../../../hooks/manager/useManagerClients'
+import TradingViewChart from '../../../components/trading/TradingViewChart'
 
 // --- Types ---
 
@@ -161,7 +162,8 @@ export default function SpotTrading({
       tokenOut: o.params?.tokenOut?.symbol || '',
       amountIn: o.params?.totalAmount || o.executedVolume || '0',
       status: o.status as 'filled',
-      createdAt: typeof o.createdAt === 'string' ? o.createdAt : o.createdAt?.toISOString?.() || new Date().toISOString(),
+      createdAt:
+        typeof o.createdAt === 'string' ? o.createdAt : o.createdAt?.toISOString?.() || new Date().toISOString(),
       // Optional trigger properties (not applicable for immediate orders)
       triggerPrice: undefined,
       triggerCondition: undefined,
@@ -173,10 +175,7 @@ export default function SpotTrading({
       duration: o.params?.durationMinutes,
       limitPrice: undefined,
     }))
-  const filledOrders = [
-    ...orders.filter((o) => o.status === 'filled'),
-    ...executedFilledOrders,
-  ]
+  const filledOrders = [...orders.filter((o) => o.status === 'filled'), ...executedFilledOrders]
 
   // Same for failed orders
   const executedFailedOrders: TriggerOrder[] = executedOrders
@@ -189,7 +188,8 @@ export default function SpotTrading({
       tokenOut: o.params?.tokenOut?.symbol || '',
       amountIn: o.params?.totalAmount || '0',
       status: o.status as 'failed' | 'cancelled',
-      createdAt: typeof o.createdAt === 'string' ? o.createdAt : o.createdAt?.toISOString?.() || new Date().toISOString(),
+      createdAt:
+        typeof o.createdAt === 'string' ? o.createdAt : o.createdAt?.toISOString?.() || new Date().toISOString(),
       // Optional trigger properties (not applicable for immediate orders)
       triggerPrice: undefined,
       triggerCondition: undefined,
@@ -201,10 +201,7 @@ export default function SpotTrading({
       duration: o.params?.durationMinutes,
       limitPrice: undefined,
     }))
-  const failedOrders = [
-    ...orders.filter((o) => ['cancelled', 'failed'].includes(o.status)),
-    ...executedFailedOrders,
-  ]
+  const failedOrders = [...orders.filter((o) => ['cancelled', 'failed'].includes(o.status)), ...executedFailedOrders]
 
   // Helpers
   const shortenAddress = (addr: string) => `${addr.substring(0, 5)}...${addr.substring(addr.length - 4)}`
@@ -310,7 +307,7 @@ export default function SpotTrading({
         triggerCondition: priceTriggerType === 'none' ? undefined : priceTriggerType === '>=' ? 'above' : 'below',
         timeTrigger: timeTriggerType !== 'none' ? timeTriggerValue : undefined,
         timezone: timeTriggerType !== 'none' ? timezone : undefined,
-        triggerOperator: (priceTriggerType !== 'none' && timeTriggerType !== 'none') ? triggerOperator : undefined,
+        triggerOperator: priceTriggerType !== 'none' && timeTriggerType !== 'none' ? triggerOperator : undefined,
         chunks: orderType === 'smart_market' || orderType === 'smart_twap' ? chunks : undefined,
         slices: orderType === 'twap' || orderType === 'smart_twap' ? slices : undefined,
         duration: orderType === 'twap' || orderType === 'smart_twap' ? duration : undefined,
@@ -342,9 +339,14 @@ export default function SpotTrading({
         chunks: chunks ? parseInt(chunks, 10) : undefined,
       })
 
-      const orderLabel = orderType === 'market' ? 'Market' :
-        orderType === 'twap' ? 'TWAP' :
-          orderType === 'smart_market' ? 'Smart Market' : 'Smart TWAP'
+      const orderLabel =
+        orderType === 'market'
+          ? 'Market'
+          : orderType === 'twap'
+            ? 'TWAP'
+            : orderType === 'smart_market'
+              ? 'Smart Market'
+              : 'Smart TWAP'
       setMessage({ type: 'success', text: `${orderLabel} Order Executed!` })
 
       // Refresh executed orders to update history table
@@ -374,7 +376,7 @@ export default function SpotTrading({
         <Paper
           elevation={2}
           sx={{
-            width: isSidebarOpen ? 320 : 64,
+            width: isSidebarOpen ? 280 : 56,
             transition: 'width 0.3s',
             display: 'flex',
             flexDirection: 'column',
@@ -505,431 +507,454 @@ export default function SpotTrading({
           )}
         </Paper>
 
-        {/* === Order Entry Form === */}
-        <Paper elevation={2} sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-          {/* Messages */}
-          {(message || tradeError) && (
-            <Alert
-              severity={message?.type === 'success' ? 'success' : 'error'}
-              onClose={() => setMessage(null)}
-              sx={{ mb: 2 }}
-            >
-              {message?.text || tradeError}
-            </Alert>
-          )}
-
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h6" fontWeight={600}>
-              Order Entry
-            </Typography>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <Select value={orderType} onChange={(e) => setOrderType(e.target.value as OrderType)}>
-                <MenuItem value="market">
-                  <Box display="flex" gap={1} alignItems="center">
-                    <FlashOnIcon fontSize="small" /> Market
-                  </Box>
-                </MenuItem>
-                <MenuItem value="twap">
-                  <Box display="flex" gap={1} alignItems="center">
-                    <ScheduleIcon fontSize="small" /> TWAP
-                  </Box>
-                </MenuItem>
-                <MenuItem value="smart_market">
-                  <Box display="flex" gap={1} alignItems="center">
-                    <SmartToyIcon fontSize="small" /> Smart Market
-                  </Box>
-                </MenuItem>
-                <MenuItem value="smart_twap">
-                  <Box display="flex" gap={1} alignItems="center">
-                    <AutoGraphIcon fontSize="small" /> Smart TWAP
-                  </Box>
-                </MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-
-          <Grid container spacing={3}>
-            {/* Tokens */}
-            <Grid item xs={5}>
-              <TextField
-                select
-                fullWidth
-                label="Sell"
-                value={tokenInSymbol}
-                onChange={(e) => setTokenInSymbol(e.target.value)}
+        {/* === Main Content: Order Form + Chart (50/50 split) === */}
+        <Box sx={{ flex: 1, display: 'flex', gap: 2, minWidth: 0, minHeight: 400 }}>
+          {/* === Order Entry Form (50%) === */}
+          <Paper
+            elevation={2}
+            sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', overflowY: 'auto', minWidth: 0 }}
+          >
+            {/* Messages */}
+            {(message || tradeError) && (
+              <Alert
+                severity={message?.type === 'success' ? 'success' : 'error'}
+                onClose={() => setMessage(null)}
+                sx={{ mb: 2 }}
               >
-                {tokenList.map((t) => (
-                  <MenuItem key={t.symbol} value={t.symbol}>
-                    {t.symbol}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={2} display="flex" justifyContent="center" alignItems="center">
-              <IconButton onClick={handleSwapTokens} color="primary">
-                <SwapHoriz />
-              </IconButton>
-            </Grid>
-            <Grid item xs={5}>
-              <TextField
-                select
-                fullWidth
-                label="Buy"
-                value={tokenOutSymbol}
-                onChange={(e) => setTokenOutSymbol(e.target.value)}
-              >
-                {tokenList.map((t) => (
-                  <MenuItem key={t.symbol} value={t.symbol}>
-                    {t.symbol}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
+                {message?.text || tradeError}
+              </Alert>
+            )}
 
-            {/* Amount */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Amount"
-                type="number"
-                value={amountIn}
-                onChange={(e) => setAmountIn(e.target.value)}
-                InputProps={{
-                  endAdornment: isQuoting ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                    <Typography variant="caption" color="text.secondary">
-                      {tokenInSymbol}
-                    </Typography>
-                  ),
-                }}
-              />
-            </Grid>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Typography variant="h6" fontWeight={600}>
+                Order Entry
+              </Typography>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <Select value={orderType} onChange={(e) => setOrderType(e.target.value as OrderType)}>
+                  <MenuItem value="market">
+                    <Box display="flex" gap={1} alignItems="center">
+                      <FlashOnIcon fontSize="small" /> Market
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="twap">
+                    <Box display="flex" gap={1} alignItems="center">
+                      <ScheduleIcon fontSize="small" /> TWAP
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="smart_market">
+                    <Box display="flex" gap={1} alignItems="center">
+                      <SmartToyIcon fontSize="small" /> Smart Market
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="smart_twap">
+                    <Box display="flex" gap={1} alignItems="center">
+                      <AutoGraphIcon fontSize="small" /> Smart TWAP
+                    </Box>
+                  </MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
 
-            {/* Advanced Order Inputs */}
-            {(orderType === 'smart_market' || orderType === 'smart_twap') && (
-              <Grid item xs={6}>
+            <Grid container spacing={3}>
+              {/* Tokens */}
+              <Grid item xs={5}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Sell"
+                  value={tokenInSymbol}
+                  onChange={(e) => setTokenInSymbol(e.target.value)}
+                >
+                  {tokenList.map((t) => (
+                    <MenuItem key={t.symbol} value={t.symbol}>
+                      {t.symbol}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={2} display="flex" justifyContent="center" alignItems="center">
+                <IconButton onClick={handleSwapTokens} color="primary">
+                  <SwapHoriz />
+                </IconButton>
+              </Grid>
+              <Grid item xs={5}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Buy"
+                  value={tokenOutSymbol}
+                  onChange={(e) => setTokenOutSymbol(e.target.value)}
+                >
+                  {tokenList.map((t) => (
+                    <MenuItem key={t.symbol} value={t.symbol}>
+                      {t.symbol}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+
+              {/* Amount */}
+              <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="Chunks"
+                  label="Amount"
                   type="number"
-                  value={chunks}
-                  onChange={(e) => setChunks(e.target.value)}
-                  inputProps={{ min: 3, max: 10 }}
-                  helperText="3-10 chunks"
+                  value={amountIn}
+                  onChange={(e) => setAmountIn(e.target.value)}
+                  InputProps={{
+                    endAdornment: isQuoting ? (
+                      <CircularProgress size={20} />
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">
+                        {tokenInSymbol}
+                      </Typography>
+                    ),
+                  }}
                 />
               </Grid>
-            )}
-            {(orderType === 'twap' || orderType === 'smart_twap') && (
-              <>
-                <Grid item xs={orderType === 'smart_twap' ? 6 : 6}>
+
+              {/* Advanced Order Inputs */}
+              {(orderType === 'smart_market' || orderType === 'smart_twap') && (
+                <Grid item xs={6}>
                   <TextField
                     fullWidth
-                    label="Slices"
+                    label="Chunks"
                     type="number"
-                    value={slices}
-                    onChange={(e) => setSlices(e.target.value)}
-                    inputProps={{ min: 2, max: 20 }}
-                    helperText="2-20 slices"
+                    value={chunks}
+                    onChange={(e) => setChunks(e.target.value)}
+                    inputProps={{ min: 3, max: 10 }}
+                    helperText="3-10 chunks"
                   />
                 </Grid>
-                <Grid item xs={orderType === 'smart_twap' ? 12 : 6}>
-                  <TextField
-                    fullWidth
-                    label="Duration (Minutes)"
-                    type="number"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                  />
-                </Grid>
-              </>
-            )}
-
-            {/* Triggers */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                Triggers (Optional)
-              </Typography>
-              <Box display="flex" gap={2} flexWrap="wrap" alignItems="flex-start">
-                {/* Price Trigger */}
-                <Box flex={1} display="flex" gap={1}>
-                  <FormControl size="small" sx={{ width: 100 }}>
-                    <Select value={priceTriggerType} onChange={(e) => setPriceTriggerType(e.target.value as any)}>
-                      <MenuItem value="none">None</MenuItem>
-                      <MenuItem value=">=">Price &ge;</MenuItem>
-                      <MenuItem value="<=">Price &le;</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    size="small"
-                    placeholder="Trigger Price"
-                    fullWidth
-                    disabled={priceTriggerType === 'none'}
-                    value={priceTriggerValue}
-                    onChange={(e) => setPriceTriggerValue(e.target.value)}
-                  />
-                </Box>
-
-                {/* AND/OR Operator Toggle */}
-                {priceTriggerType !== 'none' && timeTriggerType !== 'none' && (
-                  <Box display="flex" alignItems="center" justifyContent="center" sx={{ minWidth: 50 }}>
-                    <Chip
-                      label={triggerOperator}
-                      onClick={() => setTriggerOperator(prev => prev === 'AND' ? 'OR' : 'AND')}
-                      color={triggerOperator === 'AND' ? 'primary' : 'default'}
-                      variant={triggerOperator === 'AND' ? 'filled' : 'outlined'}
-                      size="small"
-                      sx={{ cursor: 'pointer', fontWeight: 700, minWidth: 48 }}
+              )}
+              {(orderType === 'twap' || orderType === 'smart_twap') && (
+                <>
+                  <Grid item xs={orderType === 'smart_twap' ? 6 : 6}>
+                    <TextField
+                      fullWidth
+                      label="Slices"
+                      type="number"
+                      value={slices}
+                      onChange={(e) => setSlices(e.target.value)}
+                      inputProps={{ min: 2, max: 20 }}
+                      helperText="2-20 slices"
                     />
-                  </Box>
-                )}
+                  </Grid>
+                  <Grid item xs={orderType === 'smart_twap' ? 12 : 6}>
+                    <TextField
+                      fullWidth
+                      label="Duration (Minutes)"
+                      type="number"
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                    />
+                  </Grid>
+                </>
+              )}
 
-                {/* Time Trigger + Timezone */}
-                <Box flex={1} display="flex" gap={1}>
-                  <FormControl size="small" sx={{ width: 100 }}>
-                    <Select value={timeTriggerType} onChange={(e) => setTimeTriggerType(e.target.value as any)}>
-                      <MenuItem value="none">None</MenuItem>
-                      <MenuItem value="at">Time At</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    size="small"
-                    type="datetime-local"
-                    fullWidth
-                    disabled={timeTriggerType === 'none'}
-                    value={timeTriggerValue}
-                    onChange={(e) => setTimeTriggerValue(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                  {timeTriggerType !== 'none' && (
-                    <FormControl size="small" sx={{ minWidth: 80 }}>
-                      <Select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
-                        {TIMEZONES.map((tz) => (
-                          <MenuItem key={tz} value={tz}>{tz}</MenuItem>
-                        ))}
+              {/* Triggers */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                  Triggers (Optional)
+                </Typography>
+                <Box display="flex" gap={2} flexWrap="wrap" alignItems="flex-start">
+                  {/* Price Trigger */}
+                  <Box flex={1} display="flex" gap={1}>
+                    <FormControl size="small" sx={{ width: 100 }}>
+                      <Select value={priceTriggerType} onChange={(e) => setPriceTriggerType(e.target.value as any)}>
+                        <MenuItem value="none">None</MenuItem>
+                        <MenuItem value=">=">Price &ge;</MenuItem>
+                        <MenuItem value="<=">Price &le;</MenuItem>
                       </Select>
                     </FormControl>
-                  )}
-                </Box>
-              </Box>
-            </Grid>
-
-            {/* Slippage & Preview */}
-            <Grid item xs={12}>
-              <Box mb={2}>
-                <Typography variant="caption" color="text.secondary" gutterBottom>
-                  Slippage Tolerance
-                </Typography>
-                <Box display="flex" gap={1} mt={0.5}>
-                  {['0.05', '1.0', '2.0'].map((val) => (
-                    <Chip
-                      key={val}
-                      label={`${val}%`}
-                      onClick={() => setSlippage(val)}
-                      color={slippage === val ? 'primary' : 'default'}
-                      variant={slippage === val ? 'filled' : 'outlined'}
+                    <TextField
                       size="small"
+                      placeholder="Trigger Price"
+                      fullWidth
+                      disabled={priceTriggerType === 'none'}
+                      value={priceTriggerValue}
+                      onChange={(e) => setPriceTriggerValue(e.target.value)}
                     />
-                  ))}
-                </Box>
-              </Box>
+                  </Box>
 
-              {/* COMPACT ORDER PREVIEW */}
-              <Paper
-                variant="outlined"
-                sx={{
-                  p: 1.5,
-                  bgcolor: 'action.hover',
-                  borderRadius: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 15,
-                  flexWrap: 'nowrap',
-                }}
-              >
-                <Chip
-                  label={orderType.replace('_', ' ').toUpperCase()}
-                  size="small"
-                  color="primary"
-                  sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }}
-                />
-
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Typography variant="body2" fontWeight={600}>
-                    {amountIn || '0'} {tokenInSymbol}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    →
-                  </Typography>
-                  <Typography variant="body2" fontWeight={600} color={quoteAmountOut ? 'success.main' : 'text.primary'}>
-                    {quoteAmountOut ? parseFloat(quoteAmountOut).toFixed(4) : '-'} {tokenOutSymbol}
-                  </Typography>
-                </Box>
-
-                <Divider orientation="vertical" flexItem />
-
-                <Box display="flex" gap={2}>
-                  <Typography variant="caption" color="text.secondary">
-                    Rate:{' '}
-                    <Box component="span" fontWeight={600} color="text.primary">
-                      {quoteAmountOut && amountIn
-                        ? (parseFloat(quoteAmountOut) / parseFloat(amountIn)).toFixed(4)
-                        : '-'}
+                  {/* AND/OR Operator Toggle */}
+                  {priceTriggerType !== 'none' && timeTriggerType !== 'none' && (
+                    <Box display="flex" alignItems="center" justifyContent="center" sx={{ minWidth: 50 }}>
+                      <Chip
+                        label={triggerOperator}
+                        onClick={() => setTriggerOperator((prev) => (prev === 'AND' ? 'OR' : 'AND'))}
+                        color={triggerOperator === 'AND' ? 'primary' : 'default'}
+                        variant={triggerOperator === 'AND' ? 'filled' : 'outlined'}
+                        size="small"
+                        sx={{ cursor: 'pointer', fontWeight: 700, minWidth: 48 }}
+                      />
                     </Box>
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Slippage:{' '}
-                    <Box component="span" fontWeight={600} color="text.primary">
-                      {slippage}%
-                    </Box>
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Router:{' '}
-                    <Box component="span" fontWeight={600} color="text.primary">
-                      Uniswap V3
-                    </Box>
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Price Impact:{' '}
-                    <Box component="span" fontWeight={600} color="text.primary">
-                      Price Impact
-                    </Box>
-                  </Typography>
-                </Box>
-                {(chunks || slices || duration) && <Divider orientation="vertical" flexItem />}
-                <Box display="flex" gap={2}>
-                  {chunks && (orderType === 'smart_market' || orderType === 'smart_twap') && (
-                    <Typography variant="caption" color="text.secondary">
-                      Chunks:{' '}
-                      <Box component="span" fontWeight={600} color="text.primary">
-                        {chunks}
-                      </Box>
-                    </Typography>
                   )}
-                  {slices && (orderType === 'twap' || orderType === 'smart_twap') && (
-                    <Typography variant="caption" color="text.secondary">
-                      Slices:{' '}
-                      <Box component="span" fontWeight={600} color="text.primary">
-                        {slices}
-                      </Box>
-                    </Typography>
-                  )}
-                  {duration && (orderType === 'twap' || orderType === 'smart_twap') && (
-                    <Typography variant="caption" color="text.secondary">
-                      Duration:{' '}
-                      <Box component="span" fontWeight={600} color="text.primary">
-                        {duration}m
-                      </Box>
-                    </Typography>
-                  )}
+
+                  {/* Time Trigger + Timezone */}
+                  <Box flex={1} display="flex" gap={1}>
+                    <FormControl size="small" sx={{ width: 100 }}>
+                      <Select value={timeTriggerType} onChange={(e) => setTimeTriggerType(e.target.value as any)}>
+                        <MenuItem value="none">None</MenuItem>
+                        <MenuItem value="at">Time At</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      size="small"
+                      type="datetime-local"
+                      fullWidth
+                      disabled={timeTriggerType === 'none'}
+                      value={timeTriggerValue}
+                      onChange={(e) => setTimeTriggerValue(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                    {timeTriggerType !== 'none' && (
+                      <FormControl size="small" sx={{ minWidth: 80 }}>
+                        <Select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                          {TIMEZONES.map((tz) => (
+                            <MenuItem key={tz} value={tz}>
+                              {tz}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                  </Box>
+                </Box>
+              </Grid>
+
+              {/* Slippage & Preview */}
+              <Grid item xs={12}>
+                <Box mb={2}>
+                  <Typography variant="caption" color="text.secondary" gutterBottom>
+                    Slippage Tolerance
+                  </Typography>
+                  <Box display="flex" gap={1} mt={0.5}>
+                    {['0.05', '1.0', '2.0'].map((val) => (
+                      <Chip
+                        key={val}
+                        label={`${val}%`}
+                        onClick={() => setSlippage(val)}
+                        color={slippage === val ? 'primary' : 'default'}
+                        variant={slippage === val ? 'filled' : 'outlined'}
+                        size="small"
+                      />
+                    ))}
+                  </Box>
                 </Box>
 
-                {(priceTriggerType !== 'none' || timeTriggerType !== 'none') && (
-                  <>
-                    <Divider orientation="vertical" flexItem />
-                    <Box display="flex" gap={1} alignItems="center">
-                      {priceTriggerType !== 'none' && (
-                        <Chip
-                          icon={<TrendingUpIcon style={{ fontSize: 14 }} />}
-                          label={`${priceTriggerType} ${priceTriggerValue}`}
-                          size="small"
-                          variant="outlined"
-                          sx={{ height: 20, fontSize: '0.65rem' }}
-                        />
-                      )}
-                      {timeTriggerType !== 'none' && (
-                        <Chip
-                          icon={<ScheduleIcon style={{ fontSize: 14 }} />}
-                          label={`At ${timeTriggerValue}`}
-                          size="small"
-                          variant="outlined"
-                          sx={{ height: 20, fontSize: '0.65rem' }}
-                        />
-                      )}
-                    </Box>
-                  </>
-                )}
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12}>
-              {/* Execution Progress */}
-              {currentOrder && isTrading && (
+                {/* COMPACT ORDER PREVIEW */}
                 <Paper
                   variant="outlined"
                   sx={{
-                    p: 2,
-                    mb: 2,
+                    p: 1.5,
                     bgcolor: 'action.hover',
-                    borderColor: 'primary.main'
+                    borderRadius: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    flexWrap: 'wrap',
                   }}
                 >
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      Executing {orderType.replace('_', ' ').toUpperCase()}
-                    </Typography>
-                    <Chip
-                      label={`${currentOrder.executedSlices}/${currentOrder.totalSlices} slices`}
-                      size="small"
-                      color="primary"
-                    />
-                  </Box>
-                  <Box sx={{ width: '100%', bgcolor: 'grey.800', borderRadius: 1, height: 8 }}>
-                    <Box
-                      sx={{
-                        width: `${currentOrder.progress}%`,
-                        bgcolor: 'primary.main',
-                        height: '100%',
-                        borderRadius: 1,
-                        transition: 'width 0.3s ease',
-                      }}
-                    />
-                  </Box>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
-                    <Typography variant="caption" color="text.secondary">
-                      Volume: {currentOrder.executedVolume} {tokenInSymbol}
-                    </Typography>
-                    <Button
-                      size="small"
-                      color="error"
-                      onClick={cancelOrder}
-                      variant="outlined"
-                    >
-                      Cancel
-                    </Button>
-                  </Box>
-                </Paper>
-              )}
+                  <Chip
+                    label={orderType.replace('_', ' ').toUpperCase()}
+                    size="small"
+                    color="primary"
+                    sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }}
+                  />
 
-              <Button
-                fullWidth
-                variant="contained"
-                size="large"
-                onClick={handleSubmit}
-                disabled={isTrading || selectedClients.length === 0 || !amountIn}
-                startIcon={isTrading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
-              >
-                {priceTriggerType !== 'none' || timeTriggerType !== 'none'
-                  ? 'Create Trigger Order'
-                  : orderType === 'market'
-                    ? 'Execute Swap'
-                    : `Execute ${orderType.replace('_', ' ').toUpperCase()}`}
-              </Button>
-              {selectedClients.length > 0 && (
-                <Typography variant="caption" align="center" display="block" sx={{ mt: 1 }}>
-                  Applying to {selectedClients.length} Wallets
-                </Typography>
-              )}
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography variant="body2" fontWeight={600}>
+                      {amountIn || '0'} {tokenInSymbol}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      →
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      color={quoteAmountOut ? 'success.main' : 'text.primary'}
+                    >
+                      {quoteAmountOut ? parseFloat(quoteAmountOut).toFixed(4) : '-'} {tokenOutSymbol}
+                    </Typography>
+                  </Box>
+
+                  <Divider orientation="vertical" flexItem />
+
+                  <Box display="flex" gap={2}>
+                    <Typography variant="caption" color="text.secondary">
+                      Rate:{' '}
+                      <Box component="span" fontWeight={600} color="text.primary">
+                        {quoteAmountOut && amountIn
+                          ? (parseFloat(quoteAmountOut) / parseFloat(amountIn)).toFixed(4)
+                          : '-'}
+                      </Box>
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Slippage:{' '}
+                      <Box component="span" fontWeight={600} color="text.primary">
+                        {slippage}%
+                      </Box>
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Router:{' '}
+                      <Box component="span" fontWeight={600} color="text.primary">
+                        Uniswap V3
+                      </Box>
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Impact:{' '}
+                      <Box component="span" fontWeight={600} color="warning.main">
+                        ~0.1%
+                      </Box>
+                    </Typography>
+                  </Box>
+                  {(chunks || slices || duration) && <Divider orientation="vertical" flexItem />}
+                  <Box display="flex" gap={2}>
+                    {chunks && (orderType === 'smart_market' || orderType === 'smart_twap') && (
+                      <Typography variant="caption" color="text.secondary">
+                        Chunks:{' '}
+                        <Box component="span" fontWeight={600} color="text.primary">
+                          {chunks}
+                        </Box>
+                      </Typography>
+                    )}
+                    {slices && (orderType === 'twap' || orderType === 'smart_twap') && (
+                      <Typography variant="caption" color="text.secondary">
+                        Slices:{' '}
+                        <Box component="span" fontWeight={600} color="text.primary">
+                          {slices}
+                        </Box>
+                      </Typography>
+                    )}
+                    {duration && (orderType === 'twap' || orderType === 'smart_twap') && (
+                      <Typography variant="caption" color="text.secondary">
+                        Duration:{' '}
+                        <Box component="span" fontWeight={600} color="text.primary">
+                          {duration}m
+                        </Box>
+                      </Typography>
+                    )}
+                  </Box>
+
+                  {(priceTriggerType !== 'none' || timeTriggerType !== 'none') && (
+                    <>
+                      <Divider orientation="vertical" flexItem />
+                      <Box display="flex" gap={1} alignItems="center">
+                        {priceTriggerType !== 'none' && (
+                          <Chip
+                            icon={<TrendingUpIcon style={{ fontSize: 14 }} />}
+                            label={`${priceTriggerType} ${priceTriggerValue}`}
+                            size="small"
+                            variant="outlined"
+                            sx={{ height: 20, fontSize: '0.65rem' }}
+                          />
+                        )}
+                        {timeTriggerType !== 'none' && (
+                          <Chip
+                            icon={<ScheduleIcon style={{ fontSize: 14 }} />}
+                            label={`At ${timeTriggerValue}`}
+                            size="small"
+                            variant="outlined"
+                            sx={{ height: 20, fontSize: '0.65rem' }}
+                          />
+                        )}
+                      </Box>
+                    </>
+                  )}
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                {/* Execution Progress */}
+                {currentOrder && isTrading && (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 2,
+                      mb: 2,
+                      bgcolor: 'action.hover',
+                      borderColor: 'primary.main',
+                    }}
+                  >
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                      <Typography variant="subtitle2" fontWeight={600}>
+                        Executing {orderType.replace('_', ' ').toUpperCase()}
+                      </Typography>
+                      <Chip
+                        label={`${currentOrder.executedSlices}/${currentOrder.totalSlices} slices`}
+                        size="small"
+                        color="primary"
+                      />
+                    </Box>
+                    <Box sx={{ width: '100%', bgcolor: 'grey.800', borderRadius: 1, height: 8 }}>
+                      <Box
+                        sx={{
+                          width: `${currentOrder.progress}%`,
+                          bgcolor: 'primary.main',
+                          height: '100%',
+                          borderRadius: 1,
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
+                      <Typography variant="caption" color="text.secondary">
+                        Volume: {currentOrder.executedVolume} {tokenInSymbol}
+                      </Typography>
+                      <Button size="small" color="error" onClick={cancelOrder} variant="outlined">
+                        Cancel
+                      </Button>
+                    </Box>
+                  </Paper>
+                )}
+
+                <Button
+                  fullWidth
+                  variant="contained"
+                  size="large"
+                  onClick={handleSubmit}
+                  disabled={isTrading || selectedClients.length === 0 || !amountIn}
+                  startIcon={isTrading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
+                >
+                  {priceTriggerType !== 'none' || timeTriggerType !== 'none'
+                    ? 'Create Trigger Order'
+                    : orderType === 'market'
+                      ? 'Execute Swap'
+                      : `Execute ${orderType.replace('_', ' ').toUpperCase()}`}
+                </Button>
+                {selectedClients.length > 0 && (
+                  <Typography variant="caption" align="center" display="block" sx={{ mt: 1 }}>
+                    Applying to {selectedClients.length} Wallets
+                  </Typography>
+                )}
+              </Grid>
             </Grid>
-          </Grid>
-        </Paper>
+          </Paper>
+
+          {/* === TradingView Chart (50%) === */}
+          <Paper
+            elevation={2}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 400,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              borderRadius: 2,
+            }}
+          >
+            <TradingViewChart tokenIn={tokenInSymbol} tokenOut={tokenOutSymbol} />
+          </Paper>
+        </Box>
       </Box>
 
       {/* 
           BOTTOM ROW: Orders Table 
           Full width
       */}
-      <Paper sx={{ mt: 2, flexShrink: 0, height: 350, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <Paper sx={{ flexShrink: 0, height: 300, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <Box p={2} borderBottom={1} borderColor="divider">
           <Typography variant="subtitle1" fontWeight={600}>
             Active Orders & History
