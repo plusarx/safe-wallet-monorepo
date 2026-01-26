@@ -823,61 +823,6 @@ export default function SpotTrading({
                       </Box>
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Impact:{' '}
-                      <Box component="span" fontWeight={600} color="warning.main">
-                        ~0.1%
-                      </Box>
-                    </Typography>
-                  </Box>
-                  {(chunks || slices || duration) && <Divider orientation="vertical" flexItem />}
-                  <Box display="flex" gap={2}>
-                    {chunks && (orderType === 'smart_market' || orderType === 'smart_twap') && (
-                      <Typography variant="caption" color="text.secondary">
-                        Chunks:{' '}
-                        <Box component="span" fontWeight={600} color="text.primary">
-                          {chunks}
-                        </Box>
-                      </Typography>
-                    )}
-                    {slices && (orderType === 'twap' || orderType === 'smart_twap') && (
-                      <Typography variant="caption" color="text.secondary">
-                        Slices:{' '}
-                        <Box component="span" fontWeight={600} color="text.primary">
-                          {slices}
-                        </Box>
-                      </Typography>
-                    )}
-                    {duration && (orderType === 'twap' || orderType === 'smart_twap') && (
-                      <Typography variant="caption" color="text.secondary">
-                        Duration:{' '}
-                        <Box component="span" fontWeight={600} color="text.primary">
-                          {duration}m
-                        </Box>
-                      </Typography>
-                    )}
-                  </Box>
-                  <Box display="flex" gap={2}>
-                    <Typography variant="caption" color="text.secondary">
-                      Rate:{' '}
-                      <Box component="span" fontWeight={600} color="text.primary">
-                        {quoteAmountOut && amountIn
-                          ? (parseFloat(quoteAmountOut) / parseFloat(amountIn)).toFixed(4)
-                          : '-'}
-                      </Box>
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Slippage:{' '}
-                      <Box component="span" fontWeight={600} color="text.primary">
-                        {slippage}%
-                      </Box>
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Router:{' '}
-                      <Box component="span" fontWeight={600} color="text.primary">
-                        Uniswap V3
-                      </Box>
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
                       Price Impact:{' '}
                       <Box
                         component="span"
