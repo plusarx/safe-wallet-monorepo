@@ -39,6 +39,7 @@ import AutoGraphIcon from '@mui/icons-material/AutoGraph'
 import DeleteIcon from '@mui/icons-material/Delete'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import PeopleIcon from '@mui/icons-material/People'
+import DownloadIcon from '@mui/icons-material/Download'
 import { Tabs, Tab } from '@mui/material'
 
 import type { OrderType as EngineOrderType } from '../../../hooks/useOrderEngine'
@@ -116,6 +117,7 @@ export default function SpotTrading({
     executeOrder,
     cancelOrder,
     getOrderHistory,
+    downloadAnalyticsCSV,
   } = useOrderEngine()
 
   const [orderType, setOrderType] = useState<OrderType>('market')
@@ -987,10 +989,21 @@ export default function SpotTrading({
           Full width
       */}
       <Paper sx={{ flexShrink: 0, height: 300, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <Box p={2} borderBottom={1} borderColor="divider">
+        <Box p={2} borderBottom={1} borderColor="divider" display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="subtitle1" fontWeight={600}>
             Active Orders & History
           </Typography>
+          <Tooltip title="Export slippage analytics to CSV">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={downloadAnalyticsCSV}
+              sx={{ textTransform: 'none' }}
+            >
+              Export CSV
+            </Button>
+          </Tooltip>
         </Box>
         <Tabs
           value={tabValue}

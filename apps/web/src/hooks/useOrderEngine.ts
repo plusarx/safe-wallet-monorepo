@@ -1196,6 +1196,89 @@ export function useOrderEngine() {
     }, [getSlippageAnalytics])
 
     // -------------------------------------------------------------------------
+    // EXPORT ANALYTICS AS CSV (for testing/analysis before database)
+    // -------------------------------------------------------------------------
+
+    const exportAnalyticsCSV = useCallback(() => {
+        const analytics = getSlippageAnalytics()
+
+        // CSV Header
+        const headers = [
+            'id',
+            'timestamp',
+            'orderType',
+            'testGroup',
+            'fillPrice',
+            'expectedPrice',
+            'isConcurrent',
+            'quantity',
+            'slippageBps',
+            'priceImpactBps',
+            'slippageSetting',
+            'expectedAmountOut',
+            'actualAmountOut',
+            'realizedSlippage',
+            'priceImpact',
+            'executedVolume',
+            'status',
+        ]
+
+        // Convert raw orders to CSV rows
+        const rows = analytics.rawOrders.map(order => [
+            order.id,
+            order.timestamp instanceof Date ? order.timestamp.toISOString() : order.timestamp,
+            order.orderType,
+            order.testGroup || '',
+            order.fillPrice ?? '',
+            order.expectedPrice ?? '',
+            order.isConcurrent,
+            order.quantity || '',
+            order.slippageBps ?? '',
+            order.priceImpactBps ?? '',
+            order.slippageSetting ?? '',
+            order.expectedAmountOut || '',
+            order.actualAmountOut || '',
+            order.realizedSlippage ?? '',
+            order.priceImpact ?? '',
+            order.executedVolume || '',
+            order.status,
+        ])
+
+        // Build CSV string
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => {
+                // Escape quotes and wrap in quotes if contains comma
+                const cellStr = String(cell)
+                if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                    return `"${cellStr.replace(/"/g, '""')}"`
+                }
+                return cellStr
+            }).join(','))
+        ].join('\n')
+
+        return csvContent
+    }, [getSlippageAnalytics])
+
+    // -------------------------------------------------------------------------
+    // DOWNLOAD CSV FILE (triggers browser download)
+    // -------------------------------------------------------------------------
+
+    const downloadAnalyticsCSV = useCallback(() => {
+        const csvContent = exportAnalyticsCSV()
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.setAttribute('href', url)
+        link.setAttribute('download', `slippage_analytics_${new Date().toISOString().split('T')[0]}.csv`)
+        link.style.visibility = 'hidden'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+    }, [exportAnalyticsCSV])
+
+    // -------------------------------------------------------------------------
     // CLEAR ORDER HISTORY
     // -------------------------------------------------------------------------
 
@@ -1222,6 +1305,8 @@ export function useOrderEngine() {
         // Analytics for A/B Testing
         getSlippageAnalytics,
         exportAnalyticsData,
+        exportAnalyticsCSV,
+        downloadAnalyticsCSV,
         clearOrderHistory,
 
         // Constants
