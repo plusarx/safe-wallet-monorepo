@@ -251,12 +251,28 @@ export default function ManagerDashboard() {
           flexGrow: 1,
           p: { xs: 2, md: 3 },
           pt: { xs: 10, md: 3 },
+          pb: { xs: 6, md: 6 },
           backgroundColor: 'var(--color-background-main)',
           minHeight: '100vh',
           width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
-        {renderPage()}
+        <Box sx={{ flex: 1 }}>{renderPage()}</Box>
+
+        {/* Footer */}
+        <Typography
+          variant="body2"
+          sx={{
+            textAlign: 'center',
+            color: 'text.secondary',
+            py: 2,
+            mt: 'auto',
+          }}
+        >
+          © 2025 PulsarX. All rights reserved.
+        </Typography>
       </Box>
     </Box>
   )

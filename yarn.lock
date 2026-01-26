@@ -10859,6 +10859,7 @@ __metadata:
     react-hook-form: "npm:7.41.1"
     react-papaparse: "npm:^4.0.2"
     react-redux: "npm:^9.1.2"
+    react-ts-tradingview-widgets: "npm:^1.2.8"
     remark-frontmatter: "npm:^5.0.0"
     remark-gfm: "npm:^4.0.0"
     remark-heading-id: "npm:^1.0.1"
@@ -31709,6 +31710,16 @@ __metadata:
     react: ">=16.6.0"
     react-dom: ">=16.6.0"
   checksum: 10/ca32d3fd2168c976c5d90a317f25d5f5cd723608b415fb3b9006f9d793c8965c619562d0884503a3e44e4b06efbca4fdd1520f30e58ca3e00a0890e637d55419
+  languageName: node
+  linkType: hard
+
+"react-ts-tradingview-widgets@npm:^1.2.8":
+  version: 1.2.8
+  resolution: "react-ts-tradingview-widgets@npm:1.2.8"
+  peerDependencies:
+    react: ^17.0.2 || ^18.1.0 || ^19.0.0
+    react-dom: ^17.0.2 || ^18.1.0 || ^19.0.0
+  checksum: 10/be8319685a18c7c14f937857b553b6b5e57e5656932377e0a4de5092db1b102986dadc4ec04428b22993b6419cb1d47bf1ff9c219da1ccbc180cf3f52d58b726
   languageName: node
   linkType: hard
 
