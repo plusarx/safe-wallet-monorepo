@@ -543,7 +543,7 @@ export function useOrderEngine() {
                 const idx = orders.findIndex((o: any) => o.id === updated.id)
                 if (idx >= 0) orders[idx] = updated
                 else orders.unshift(updated)
-                localStorage.setItem('order_engine_orders', JSON.stringify(orders.slice(0, 50)))
+                localStorage.setItem('order_engine_orders', JSON.stringify(orders.slice(0, 2000)))
             } catch (e) { /* ignore */ }
             return updated
         })
@@ -1012,7 +1012,7 @@ export function useOrderEngine() {
         try {
             const orders = JSON.parse(localStorage.getItem('order_engine_orders') || '[]')
             orders.unshift(initialState)
-            localStorage.setItem('order_engine_orders', JSON.stringify(orders.slice(0, 50)))
+            localStorage.setItem('order_engine_orders', JSON.stringify(orders.slice(0, 2000)))
         } catch { /* ignore */ }
 
         let finalState: OrderState = initialState
@@ -1099,7 +1099,7 @@ export function useOrderEngine() {
 
     const getSlippageAnalytics = useCallback(() => {
         const orders = getOrderHistory()
-        const filledOrders = orders.filter(o => o.status === 'filled' || o.status === 'partial')
+        const filledOrders = orders.filter(o => o.status === 'filled')
 
         // Group by test group
         const byTestGroup: Record<string, OrderState[]> = {
