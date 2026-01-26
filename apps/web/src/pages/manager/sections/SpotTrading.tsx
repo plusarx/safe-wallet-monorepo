@@ -52,6 +52,7 @@ import TradingViewChart from '../../../components/trading/TradingViewChart'
 // --- Types ---
 
 export type OrderType = 'market' | 'twap' | 'smart_market' | 'smart_twap'
+export type AmountMode = 'fixed' | 'percentage'
 
 // Timezone Options
 const TIMEZONES = ['UTC', 'GMT', 'EST', 'CST', 'MST', 'PST', 'IST', 'CET', 'JST', 'AEST']
@@ -72,6 +73,7 @@ interface TriggerOrder {
   tokenIn: string
   tokenOut: string
   amountIn: string
+  amountMode?: 'fixed' | 'percentage'
   triggerPrice?: string
   limitPrice?: string
   chunks?: string
@@ -125,6 +127,7 @@ export default function SpotTrading({
   const [tokenInSymbol, setTokenInSymbol] = useState(DEFAULT_TOKEN_LIST[0].symbol)
   const [tokenOutSymbol, setTokenOutSymbol] = useState(DEFAULT_TOKEN_LIST[1].symbol)
   const [amountIn, setAmountIn] = useState('')
+  const [amountMode, setAmountMode] = useState<AmountMode>('fixed')
   const [slippage, setSlippage] = useState('1.0') // Default 1%
 
   // Advanced Params
@@ -324,10 +327,17 @@ export default function SpotTrading({
         if (!shouldExecute && order.triggerPrice && order.triggerPrice !== 'undefined' && order.triggerCondition) {
           try {
             // Get spot price (1 unit)
-            const tIn = tokenList.find(t => t.symbol === order.tokenIn)
-            const tOut = tokenList.find(t => t.symbol === order.tokenOut)
+            const tIn = tokenList.find((t) => t.symbol === order.tokenIn)
+            const tOut = tokenList.find((t) => t.symbol === order.tokenOut)
             if (tIn && tOut) {
-              const spotQuote = await getQuote(tIn.address, tOut.address, '1', FEE_TIERS.LOW, tIn.decimals, tOut.decimals)
+              const spotQuote = await getQuote(
+                tIn.address,
+                tOut.address,
+                '1',
+                FEE_TIERS.LOW,
+                tIn.decimals,
+                tOut.decimals,
+              )
               if (spotQuote && spotQuote !== '0') {
                 const quoteVal = parseFloat(spotQuote)
                 const inverseVal = 1 / quoteVal
@@ -338,13 +348,17 @@ export default function SpotTrading({
                 const diff2 = Math.abs(Math.log(inverseVal / triggerVal))
 
                 const actualPrice = diff1 < diff2 ? quoteVal : inverseVal
-                console.log(`[OrderMonitor] Check ${order.id}: Quote=${quoteVal}, Inverse=${inverseVal}, Trigger=${triggerVal}, Match=${actualPrice}`)
+                console.log(
+                  `[OrderMonitor] Check ${order.id}: Quote=${quoteVal}, Inverse=${inverseVal}, Trigger=${triggerVal}, Match=${actualPrice}`,
+                )
 
                 if (order.triggerCondition === 'above' && actualPrice >= triggerVal) shouldExecute = true
                 if (order.triggerCondition === 'below' && actualPrice <= triggerVal) shouldExecute = true
               }
             }
-          } catch (e) { console.error('Trigger price check failed', e) }
+          } catch (e) {
+            console.error('Trigger price check failed', e)
+          }
         }
 
         if (shouldExecute) {
@@ -354,15 +368,15 @@ export default function SpotTrading({
 
           // Execute!
           try {
-            const tIn = tokenList.find(t => t.symbol === order.tokenIn)
-            const tOut = tokenList.find(t => t.symbol === order.tokenOut)
+            const tIn = tokenList.find((t) => t.symbol === order.tokenIn)
+            const tOut = tokenList.find((t) => t.symbol === order.tokenOut)
 
             if (!tIn || !tOut) throw new Error('Tokens not found')
 
             // Map clients
             // We need to find client infos based on addresses
             // Use 'clients' prop if available or construct minimal info
-            const orderClients = clients.filter(c => order.clientAddresses.includes(c.address))
+            const orderClients = clients.filter((c) => order.clientAddresses.includes(c.address))
             if (orderClients.length === 0) throw new Error('Clients not found')
 
             await executeOrder({
@@ -431,6 +445,7 @@ export default function SpotTrading({
         tokenIn: tokenInSymbol,
         tokenOut: tokenOutSymbol,
         amountIn,
+        amountMode,
         triggerPrice: priceTriggerType !== 'none' ? priceTriggerValue : undefined,
         triggerCondition: priceTriggerType === 'none' ? undefined : priceTriggerType === '>=' ? 'above' : 'below',
         timeTrigger: timeTriggerType !== 'none' ? timeTriggerValue : undefined,
@@ -461,6 +476,7 @@ export default function SpotTrading({
         tokenIn,
         tokenOut,
         totalAmount: amountIn,
+        amountMode,
         slippage: parseFloat(slippage),
         slices: slices ? parseInt(slices, 10) : undefined,
         durationMinutes: duration ? parseInt(duration, 10) : undefined,
@@ -725,18 +741,48 @@ export default function SpotTrading({
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="Amount"
+                  label={
+                    amountMode === 'fixed' ? `Amount per Client (${tokenInSymbol})` : `% of ${tokenInSymbol} Balance`
+                  }
                   type="number"
                   value={amountIn}
                   onChange={(e) => setAmountIn(e.target.value)}
+                  placeholder={amountMode === 'fixed' ? 'Enter amount' : 'Enter percentage'}
                   InputProps={{
+                    startAdornment: (
+                      <Box sx={{ display: 'flex', alignItems: 'center', mr: 0 }}>
+                        <Select
+                          value={amountMode}
+                          onChange={(e) => {
+                            setAmountMode(e.target.value as AmountMode)
+                            setAmountIn('') // Reset on mode change
+                          }}
+                          variant="standard"
+                          disableUnderline
+                          sx={{
+                            minWidth: 75,
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            '& .MuiSelect-select': { py: 0.5, pr: 2 },
+                          }}
+                        >
+                          <MenuItem value="fixed">Fixed {tokenInSymbol}</MenuItem>
+                          <MenuItem value="percentage">% of {tokenInSymbol}</MenuItem>
+                        </Select>
+                        <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 24, alignSelf: 'center' }} />
+                      </Box>
+                    ),
                     endAdornment: isQuoting ? (
                       <CircularProgress size={20} />
                     ) : (
                       <Typography variant="caption" color="text.secondary">
-                        {tokenInSymbol}
+                        {amountMode === 'fixed' ? tokenInSymbol : '%'}
                       </Typography>
                     ),
+                  }}
+                  inputProps={{
+                    min: amountMode === 'percentage' ? 1 : 0,
+                    max: amountMode === 'percentage' ? 100 : undefined,
                   }}
                 />
               </Grid>
@@ -893,7 +939,9 @@ export default function SpotTrading({
 
                   <Box display="flex" alignItems="center" gap={1}>
                     <Typography variant="body2" fontWeight={600}>
-                      {amountIn || '0'} {tokenInSymbol}
+                      {amountMode === 'fixed'
+                        ? `${amountIn || '0'} ${tokenInSymbol}`
+                        : `${amountIn || '0'}% of ${tokenInSymbol}`}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       →
@@ -1095,7 +1143,14 @@ export default function SpotTrading({
           Full width
       */}
       <Paper sx={{ flexShrink: 0, height: 300, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <Box p={2} borderBottom={1} borderColor="divider" display="flex" justifyContent="space-between" alignItems="center">
+        <Box
+          p={2}
+          borderBottom={1}
+          borderColor="divider"
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+        >
           <Typography variant="subtitle1" fontWeight={600}>
             Active Orders & History
           </Typography>
