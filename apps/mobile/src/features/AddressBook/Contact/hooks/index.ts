@@ -1,1 +1,0 @@
-export { useContactNetworkData } from './useContactNetworkData'

@@ -1,1 +1,0 @@
-export { AbsoluteLinearGradient } from './LinearGradien'

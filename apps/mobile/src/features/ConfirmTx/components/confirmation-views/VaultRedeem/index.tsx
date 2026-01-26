@@ -1,1 +1,0 @@
-export { VaultRedeem } from './VaultRedeem'

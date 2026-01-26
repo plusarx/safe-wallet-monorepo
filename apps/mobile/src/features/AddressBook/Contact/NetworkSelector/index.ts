@@ -1,5 +1,0 @@
-export { NetworkSelector } from './NetworkSelector'
-export { ChainItem } from './ChainItem'
-export { AllNetworksItem } from './AllNetworksItem'
-export { NetworkSelectorHeader } from './NetworkSelectorHeader'
-export { NetworkSelectorContent } from './NetworkSelectorContent'

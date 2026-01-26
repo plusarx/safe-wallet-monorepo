@@ -1,1 +1,0 @@
-export { ThresholdBadge } from './ThresholdBadge'

@@ -139,6 +139,7 @@ export default function SpotTrading({
 
   // Quote / Estimation
   const [quoteAmountOut, setQuoteAmountOut] = useState('')
+  const [spotRate, setSpotRate] = useState('') // Rate for 1 unit (for price impact calculation)
   const [isQuoting, setIsQuoting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -231,6 +232,18 @@ export default function SpotTrading({
   const filteredClients = clients.filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter)
   const selectedCount = selectedClients.length
 
+  // Calculate price impact: compares execution rate vs spot rate
+  // Positive = paying more than spot (worse), Negative = paying less (better)
+  const priceImpact = (() => {
+    if (!quoteAmountOut || !spotRate || !amountIn || parseFloat(amountIn) <= 0) return null
+    const executionRate = parseFloat(quoteAmountOut) / parseFloat(amountIn) // tokenOut per tokenIn
+    const spotRateNum = parseFloat(spotRate) // tokenOut per 1 tokenIn
+    if (spotRateNum === 0) return null
+    // Price impact = ((spotRate - executionRate) / spotRate) * 100
+    // Positive means you get less than spot rate (slippage/impact)
+    return ((spotRateNum - executionRate) / spotRateNum) * 100
+  })()
+
   // --- Effects ---
 
   // Load Tokens and Orders
@@ -262,9 +275,14 @@ export default function SpotTrading({
     if (amountIn && parseFloat(amountIn) > 0) {
       setIsQuoting(true)
       const delay = setTimeout(() => {
-        getQuote(tokenIn.address, tokenOut.address, amountIn, FEE_TIERS.MEDIUM, tokenIn.decimals, tokenOut.decimals)
-          .then((amount) => {
+        // Fetch both the actual quote and spot rate (1 unit) in parallel
+        Promise.all([
+          getQuote(tokenIn.address, tokenOut.address, amountIn, FEE_TIERS.MEDIUM, tokenIn.decimals, tokenOut.decimals),
+          getQuote(tokenIn.address, tokenOut.address, '1', FEE_TIERS.MEDIUM, tokenIn.decimals, tokenOut.decimals),
+        ])
+          .then(([amount, spot]) => {
             setQuoteAmountOut(amount)
+            setSpotRate(spot)
             setIsQuoting(false)
           })
           .catch(() => setIsQuoting(false))
@@ -272,6 +290,7 @@ export default function SpotTrading({
       return () => clearTimeout(delay)
     } else {
       setQuoteAmountOut('')
+      setSpotRate('')
       setIsQuoting(false)
     }
   }, [amountIn, tokenIn, tokenOut, getQuote])
@@ -283,6 +302,7 @@ export default function SpotTrading({
     setTokenInSymbol(tokenOutSymbol)
     setTokenOutSymbol(temp)
     setQuoteAmountOut('')
+    setSpotRate('')
   }
 
   const handleDeleteOrder = (id: string) => {
@@ -791,8 +811,20 @@ export default function SpotTrading({
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Price Impact:{' '}
-                    <Box component="span" fontWeight={600} color="text.primary">
-                      Price Impact
+                    <Box
+                      component="span"
+                      fontWeight={600}
+                      color={
+                        priceImpact === null
+                          ? 'text.primary'
+                          : priceImpact > 1
+                            ? 'error.main'
+                            : priceImpact > 0.5
+                              ? 'warning.main'
+                              : 'success.main'
+                      }
+                    >
+                      {priceImpact !== null ? `${priceImpact.toFixed(2)}%` : '-'}
                     </Box>
                   </Typography>
                 </Box>

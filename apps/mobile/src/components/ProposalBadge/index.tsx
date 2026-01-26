@@ -1,1 +1,0 @@
-export { ProposalBadge } from './ProposalBadge'

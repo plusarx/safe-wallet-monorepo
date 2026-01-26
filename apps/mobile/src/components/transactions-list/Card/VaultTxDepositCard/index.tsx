@@ -1,1 +1,0 @@
-export { VaultTxDepositCard } from './VaultTxDepositCard'

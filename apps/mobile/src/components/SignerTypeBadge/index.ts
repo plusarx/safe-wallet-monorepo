@@ -1,1 +1,0 @@
-export { SignerTypeBadge } from './SignerTypeBadge'

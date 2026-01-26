@@ -1,1 +1,0 @@
-export { CurrencyItem } from './CurrencyItem'

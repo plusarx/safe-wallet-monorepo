@@ -1,1 +1,0 @@
-export { TxLifiSwapCard } from './TxLifiSwapCard'

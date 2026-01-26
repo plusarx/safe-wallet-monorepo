@@ -1,1 +1,0 @@
-export { HistoryTransactionHeader } from './HistoryTransactionHeader'

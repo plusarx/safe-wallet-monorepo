@@ -1,1 +1,0 @@
-export { SafeShieldWidget } from './SafeShieldWidget'
