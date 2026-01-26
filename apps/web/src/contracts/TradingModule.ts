@@ -46,7 +46,7 @@ export const SWAP_ROUTER_ADDRESSES: { [chainId: number]: string } = {
 
 // Uniswap V3 Quoter addresses
 export const QUOTER_ADDRESSES: { [chainId: number]: string } = {
-    11155111: '0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3', // Sepolia QuoterV2
+    11155111: '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6', // Sepolia
     42161: '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6', // Arbitrum QuoterV1
 }
 

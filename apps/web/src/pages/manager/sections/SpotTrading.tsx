@@ -276,8 +276,8 @@ export default function SpotTrading({
       const delay = setTimeout(() => {
         // Fetch both the actual quote and spot rate (1 unit) in parallel
         Promise.all([
-          getQuote(tokenIn.address, tokenOut.address, amountIn, FEE_TIERS.MEDIUM, tokenIn.decimals, tokenOut.decimals),
-          getQuote(tokenIn.address, tokenOut.address, '1', FEE_TIERS.MEDIUM, tokenIn.decimals, tokenOut.decimals),
+          getQuote(tokenIn.address, tokenOut.address, amountIn, FEE_TIERS.LOW, tokenIn.decimals, tokenOut.decimals),
+          getQuote(tokenIn.address, tokenOut.address, '1', FEE_TIERS.LOW, tokenIn.decimals, tokenOut.decimals),
         ])
           .then(([amount, spot]) => {
             setQuoteAmountOut(amount)
@@ -293,6 +293,112 @@ export default function SpotTrading({
       setIsQuoting(false)
     }
   }, [amountIn, tokenIn, tokenOut, getQuote])
+
+  // --- Order Monitor (Triggers) ---
+  useEffect(() => {
+    const checkTriggers = async () => {
+      // Avoid running if already executing a trade (simple lock)
+      if (isTrading) return
+
+      const now = new Date()
+      let updatedOrders = [...orders]
+      let hasUpdates = false
+
+      for (let i = 0; i < updatedOrders.length; i++) {
+        const order = updatedOrders[i]
+
+        // Only check pending orders
+        if (order.status !== 'pending') continue
+
+        let shouldExecute = false
+
+        // 1. Time Trigger
+        if (order.timeTrigger && order.timeTrigger !== 'undefined') {
+          const triggerTime = new Date(order.timeTrigger)
+          if (now >= triggerTime) {
+            shouldExecute = true
+          }
+        }
+
+        // 2. Price Trigger (Simple polling)
+        if (!shouldExecute && order.triggerPrice && order.triggerPrice !== 'undefined' && order.triggerCondition) {
+          try {
+            // Get spot price (1 unit)
+            const tIn = tokenList.find(t => t.symbol === order.tokenIn)
+            const tOut = tokenList.find(t => t.symbol === order.tokenOut)
+            if (tIn && tOut) {
+              const spotQuote = await getQuote(tIn.address, tOut.address, '1', FEE_TIERS.LOW, tIn.decimals, tOut.decimals)
+              if (spotQuote && spotQuote !== '0') {
+                const quoteVal = parseFloat(spotQuote)
+                const inverseVal = 1 / quoteVal
+                const triggerVal = parseFloat(order.triggerPrice)
+
+                // Heuristic: Check which price (direct or inverse) matches the user's trigger magnitude
+                const diff1 = Math.abs(Math.log(quoteVal / triggerVal))
+                const diff2 = Math.abs(Math.log(inverseVal / triggerVal))
+
+                const actualPrice = diff1 < diff2 ? quoteVal : inverseVal
+                console.log(`[OrderMonitor] Check ${order.id}: Quote=${quoteVal}, Inverse=${inverseVal}, Trigger=${triggerVal}, Match=${actualPrice}`)
+
+                if (order.triggerCondition === 'above' && actualPrice >= triggerVal) shouldExecute = true
+                if (order.triggerCondition === 'below' && actualPrice <= triggerVal) shouldExecute = true
+              }
+            }
+          } catch (e) { console.error('Trigger price check failed', e) }
+        }
+
+        if (shouldExecute) {
+          console.log(`[OrderMonitor] Executing trigger order ${order.id}`)
+          hasUpdates = true
+          updatedOrders[i] = { ...order, status: 'triggered', triggeredAt: new Date().toISOString() }
+
+          // Execute!
+          try {
+            const tIn = tokenList.find(t => t.symbol === order.tokenIn)
+            const tOut = tokenList.find(t => t.symbol === order.tokenOut)
+
+            if (!tIn || !tOut) throw new Error('Tokens not found')
+
+            // Map clients
+            // We need to find client infos based on addresses
+            // Use 'clients' prop if available or construct minimal info
+            const orderClients = clients.filter(c => order.clientAddresses.includes(c.address))
+            if (orderClients.length === 0) throw new Error('Clients not found')
+
+            await executeOrder({
+              orderType: (order.type as EngineOrderType) || 'market',
+              clientAddresses: order.clientAddresses,
+              tokenIn: { address: tIn.address, symbol: tIn.symbol, decimals: tIn.decimals },
+              tokenOut: { address: tOut.address, symbol: tOut.symbol, decimals: tOut.decimals },
+              totalAmount: order.amountIn,
+              slippage: 1.0, // Default for triggers
+              slices: order.slices ? parseInt(order.slices) : undefined,
+              durationMinutes: order.duration ? parseInt(order.duration) : undefined,
+              chunks: order.chunks ? parseInt(order.chunks) : undefined,
+            })
+
+            updatedOrders[i] = { ...updatedOrders[i], status: 'filled', filledAt: new Date().toISOString() }
+            setMessage({ type: 'success', text: `Trigger Order ${order.id} executed!` })
+          } catch (err: any) {
+            console.error('Trigger execution failed', err)
+            updatedOrders[i] = { ...updatedOrders[i], status: 'failed' }
+            setMessage({ type: 'error', text: `Trigger Order ${order.id} failed: ${err.message}` })
+          }
+        }
+      }
+
+      if (hasUpdates) {
+        setOrders(updatedOrders)
+        localStorage.setItem(ORDERS_KEY, JSON.stringify(updatedOrders.reverse()))
+        // Refresh history
+        const history = getOrderHistory()
+        setExecutedOrders(history)
+      }
+    }
+
+    const intervalId = setInterval(checkTriggers, 3000) // Check every 3 seconds
+    return () => clearInterval(intervalId)
+  }, [orders, isTrading, executeOrder, getQuote, tokenList, clients, getOrderHistory])
 
   // --- Handlers ---
 
@@ -440,7 +546,7 @@ export default function SpotTrading({
           {isSidebarOpen && (
             <Box sx={{ p: 2, flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
               <Box display="flex" gap={1} mb={2}>
-                {['all', 'safe', 'eoa'].map((type) => (
+                {['all', 'safe'].map((type) => (
                   <Chip
                     key={type}
                     label={type.toUpperCase()}
@@ -682,7 +788,7 @@ export default function SpotTrading({
                 <Box display="flex" gap={2} flexWrap="wrap" alignItems="flex-start">
                   {/* Price Trigger */}
                   <Box flex={1} display="flex" gap={1}>
-                    <FormControl size="small" sx={{ width: 100 }}>
+                    <FormControl size="small" sx={{ width: 120 }}>
                       <Select value={priceTriggerType} onChange={(e) => setPriceTriggerType(e.target.value as any)}>
                         <MenuItem value="none">None</MenuItem>
                         <MenuItem value=">=">Price &ge;</MenuItem>
@@ -715,7 +821,7 @@ export default function SpotTrading({
 
                   {/* Time Trigger + Timezone */}
                   <Box flex={1} display="flex" gap={1}>
-                    <FormControl size="small" sx={{ width: 100 }}>
+                    <FormControl size="small" sx={{ width: 120 }}>
                       <Select value={timeTriggerType} onChange={(e) => setTimeTriggerType(e.target.value as any)}>
                         <MenuItem value="none">None</MenuItem>
                         <MenuItem value="at">Time At</MenuItem>

@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react'
 import { Contract, BrowserProvider, parseUnits, formatUnits } from 'ethers'
 import {
     TRADING_MODULE_ADDRESSES,
+    TRADING_MODULE_ADDRESS, // Import default address
     TRADING_MODULE_ABI,
     QUOTER_ADDRESSES,
     QUOTER_ABI,
@@ -281,9 +282,11 @@ export function useOrderEngine() {
         const provider = await getProvider()
         const network = await provider.getNetwork()
         const chainId = Number(network.chainId)
-        const address = TRADING_MODULE_ADDRESSES[chainId]
+        const address = TRADING_MODULE_ADDRESSES[chainId] || TRADING_MODULE_ADDRESSES[42161] || TRADING_MODULE_ADDRESS
 
-        if (!address) throw new Error(`Chain ${chainId} not supported`)
+        if (!address) throw new Error(`Trading Module not available for chain ${chainId}`)
+
+        console.log('[OrderEngine] Using Trading Module at:', address, 'for chain:', chainId)
 
         if (needsSigner) {
             const signer = await provider.getSigner()
@@ -296,7 +299,7 @@ export function useOrderEngine() {
         const provider = await getProvider()
         const network = await provider.getNetwork()
         const chainId = Number(network.chainId)
-        const address = QUOTER_ADDRESSES[chainId]
+        const address = QUOTER_ADDRESSES[chainId] || QUOTER_ADDRESSES[42161]
 
         if (!address) throw new Error(`Quoter not available for chain ${chainId}`)
 
@@ -313,7 +316,7 @@ export function useOrderEngine() {
         amountIn: string,
         tokenInDecimals: number,
         tokenOutDecimals: number,
-        feeTier: number = FEE_TIERS.MEDIUM
+        feeTier: number = FEE_TIERS.LOW
     ): Promise<string> => {
         if (!amountIn || parseFloat(amountIn) <= 0) return '0'
 
@@ -351,7 +354,11 @@ export function useOrderEngine() {
     ): Promise<ExecutionResult> => {
         const executeOnce = async (): Promise<ExecutionResult> => {
             try {
+                console.log('[OrderEngine] Executing Single Trade for:', clientAddress)
                 const contract = await getTradingContract(true)
+
+                // Verify contract exists
+                if (!contract.target) throw new Error('Contract target is null')
 
                 const tradeParams = {
                     safe: clientAddress,
@@ -359,12 +366,16 @@ export function useOrderEngine() {
                     tokenOut: tokenOut.address,
                     amountIn: parseUnits(amountIn, tokenIn.decimals),
                     minAmountOut: parseUnits(minAmountOut, tokenOut.decimals),
-                    feeTier: FEE_TIERS.MEDIUM,
+                    feeTier: FEE_TIERS.LOW,
                     deadline,
                 }
 
-                const tx = await contract.executeTrade(tradeParams)
+                console.log('[OrderEngine] Trade Params:', tradeParams)
+                // FORCE GAS LIMIT to bypass estimation errors (which silent-fail in some wallets)
+                const tx = await contract.executeTrade(tradeParams, { gasLimit: 5000000 })
+                console.log('[OrderEngine] Tx sent:', tx.hash)
                 const receipt = await tx.wait()
+                console.log('[OrderEngine] Tx confirmed:', receipt.hash)
 
                 // Parse TradeExecuted event to get actual amountOut
                 let amountOut: string | undefined
@@ -396,6 +407,7 @@ export function useOrderEngine() {
 
                 return { success: true, txHash: receipt.hash, amountOut, gasUsed, effectiveGasPrice }
             } catch (err: any) {
+                console.error('[OrderEngine] Single Trade Error:', err)
                 const error = err.reason || err.message || 'Trade failed'
                 // Don't retry on slippage errors or user rejections
                 if (error.includes('slippage') || error.includes('user rejected') || error.includes('insufficient')) {
@@ -435,16 +447,32 @@ export function useOrderEngine() {
 
                 const amounts = clientAddresses.map(() => parseUnits(amountPerClient, tokenIn.decimals))
 
+                console.log('[OrderEngine] Executing Batch Trade for:', clientAddresses)
+                const batchParams = {
+                    safes: clientAddresses,
+                    tokenIn: tokenIn.address,
+                    tokenOut: tokenOut.address,
+                    amounts,
+                    minAmountOut: parseUnits(minAmountOut, tokenOut.decimals),
+                    feeTier: FEE_TIERS.LOW,
+                    deadline
+                }
+                console.log('[OrderEngine] Batch Params:', batchParams)
+
+                // FORCE GAS LIMIT
                 const tx = await contract.executeBatchTrade(
                     clientAddresses,
                     tokenIn.address,
                     tokenOut.address,
                     amounts,
                     parseUnits(minAmountOut, tokenOut.decimals),
-                    FEE_TIERS.MEDIUM,
-                    deadline
+                    FEE_TIERS.LOW,
+                    deadline,
+                    { gasLimit: 8000000 } // Higher limit for batch
                 )
+                console.log('[OrderEngine] Batch Tx sent:', tx.hash)
                 const receipt = await tx.wait()
+                console.log('[OrderEngine] Batch Tx confirmed:', receipt.hash)
 
                 // Parse BatchTradeExecuted event to get total amounts
                 let totalAmountOut: string | undefined
