@@ -534,18 +534,60 @@ export function useOrderEngine() {
     // -------------------------------------------------------------------------
 
     const updateOrderState = useCallback((updates: Partial<OrderState>) => {
+        // Update localStorage synchronously FIRST (before React state batching)
+        // This prevents race conditions where 'failed' could overwrite 'filled'
+        let currentOrderId: string | null = null
+        setCurrentOrder(prev => {
+            currentOrderId = prev?.id || null
+            return prev
+        })
+
+        if (!currentOrderId) {
+            // Try to get orderID from the update itself or skip
+            console.warn('[OrderEngine] updateOrderState called without current order')
+            return
+        }
+
+        try {
+            const orders = JSON.parse(localStorage.getItem('order_engine_orders') || '[]')
+            const idx = orders.findIndex((o: any) => o.id === currentOrderId)
+
+            if (idx >= 0) {
+                const existing = orders[idx]
+
+                // CRITICAL: Prevent 'failed' from overwriting terminal success states
+                // Once an order is 'filled', it should not be changed to 'failed'
+                const isTerminalSuccess = existing.status === 'filled'
+                const isSettingFailed = updates.status === 'failed'
+
+                if (isTerminalSuccess && isSettingFailed) {
+                    console.warn(`[OrderEngine] Ignoring 'failed' update for order ${currentOrderId} which is already 'filled'`)
+                    return // Don't overwrite successful order
+                }
+
+                orders[idx] = { ...existing, ...updates, updatedAt: new Date().toISOString() }
+            } else {
+                // Order not found, this shouldn't happen but handle gracefully
+                console.warn(`[OrderEngine] Order ${currentOrderId} not found in localStorage for update`)
+            }
+
+            localStorage.setItem('order_engine_orders', JSON.stringify(orders.slice(0, 2000)))
+        } catch (e) {
+            console.error('[OrderEngine] Failed to update localStorage:', e)
+        }
+
+        // Now update React state
         setCurrentOrder(prev => {
             if (!prev) return null
-            const updated = { ...prev, ...updates, updatedAt: new Date() }
-            // Persist to localStorage
-            try {
-                const orders = JSON.parse(localStorage.getItem('order_engine_orders') || '[]')
-                const idx = orders.findIndex((o: any) => o.id === updated.id)
-                if (idx >= 0) orders[idx] = updated
-                else orders.unshift(updated)
-                localStorage.setItem('order_engine_orders', JSON.stringify(orders.slice(0, 2000)))
-            } catch (e) { /* ignore */ }
-            return updated
+
+            // Same terminal state protection for React state
+            const isTerminalSuccess = prev.status === 'filled'
+            const isSettingFailed = updates.status === 'failed'
+            if (isTerminalSuccess && isSettingFailed) {
+                return prev // Don't update state
+            }
+
+            return { ...prev, ...updates, updatedAt: new Date() }
         })
     }, [])
 
