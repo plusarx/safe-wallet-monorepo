@@ -183,8 +183,6 @@ export default function OnboardingLinks() {
     setLinkLabel('')
   }
 
-  // Mark a link as used (called when client successfully onboards)
-
   // Check onboarded clients against generated links and mark as used
   useEffect(() => {
     if (clients.length === 0 || generatedLinks.length === 0) return

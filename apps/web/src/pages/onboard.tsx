@@ -28,7 +28,7 @@ import SecurityIcon from '@mui/icons-material/Security'
 import { useDelegationModule, PERMISSION } from '../hooks/useDelegationModule'
 import { DELEGATION_MODULE_ADDRESSES } from '../contracts/DelegationModule'
 import { useSafeSDK } from '../hooks/useSafeSDK'
-import { useEIP7702 } from '../hooks/useEIP7702'
+// import { useEIP7702 } from '../hooks/useEIP7702'
 import { TRADING_MODULE_ADDRESSES, TOKENS_BY_CHAIN, SWAP_ROUTER_ADDRESSES } from '../contracts/TradingModule'
 
 type WalletType = 'eoa' | 'safe'
@@ -37,7 +37,7 @@ export default function ClientOnboarding() {
   const router = useRouter()
   const { manager, type } = router.query
   const managerAddress = typeof manager === 'string' ? manager : ''
-  const queryType = typeof type === 'string' ? type : 'eoa'
+  const queryType = typeof type === 'string' ? type : 'safe'
 
   const [walletType, setWalletType] = useState<WalletType>(queryType as WalletType)
   const [activeStep, setActiveStep] = useState(0)
@@ -63,7 +63,7 @@ export default function ClientOnboarding() {
   } = useSafeSDK()
 
   // EIP-7702 Hook (multi-wallet support)
-  // EIP-7702 Hook (multi-wallet support)
+  /*
   const {
     // isLoading: is7702Loading,
     // error: error7702,
@@ -74,6 +74,7 @@ export default function ClientOnboarding() {
     getWalletSupportInfo: _getWalletSupportInfo,
     executeBatch,
   } = useEIP7702()
+  */
 
   // Get wallet support info
   // Get wallet support info
@@ -251,23 +252,17 @@ export default function ClientOnboarding() {
 
       if (calls.length === 0) return
 
-      if (walletType === 'eoa') {
-        const hash = await executeBatch(calls as any)
-        if (hash) {
-          setTxHash(hash)
-          setActiveStep(4)
-        }
-      } else {
-        // Safe Flow: Batch
-        await executeSafeBatch(
-          calls.map((c) => ({
-            to: c.to,
-            value: '0',
-            data: c.data,
-          })),
-        )
-        setActiveStep(4)
-      }
+      if (calls.length === 0) return
+
+      // Safe Flow: Batch
+      await executeSafeBatch(
+        calls.map((c) => ({
+          to: c.to,
+          value: '0',
+          data: c.data,
+        })),
+      )
+      setActiveStep(4)
     } catch (err: any) {
       console.error('Approval failed:', err)
       // setConnectError(err.message)
