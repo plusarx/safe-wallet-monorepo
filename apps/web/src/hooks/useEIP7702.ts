@@ -371,7 +371,7 @@ export function useEIP7702() {
         }
 
         return supportInfo[walletProvider] || supportInfo.unknown
-    }, [state.walletProvider])
+    }, [state])
 
     return {
         isLoading,

@@ -29,6 +29,9 @@ export interface TriggerOrder {
     createdAt: string
     triggeredAt?: string
     error?: string
+    // Gelato integration
+    useGelato?: boolean
+    gelatoTaskId?: string
 }
 
 const TRIGGER_ORDERS_KEY = 'trading_trigger_orders'

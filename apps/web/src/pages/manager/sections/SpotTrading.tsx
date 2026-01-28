@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Typography,
@@ -41,11 +41,13 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import PeopleIcon from '@mui/icons-material/People'
 import DownloadIcon from '@mui/icons-material/Download'
 import { Tabs, Tab } from '@mui/material'
+import { BrowserProvider, Contract, formatUnits } from 'ethers'
 
 import type { OrderType as EngineOrderType } from '../../../hooks/useOrderEngine'
 import { useOrderEngine } from '../../../hooks/useOrderEngine'
 import { useTradingModule } from '../../../hooks/useTradingModule'
-import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN } from '../../../contracts/TradingModule'
+import { useGelatoTriggers } from '../../../hooks/useGelatoTriggers'
+import { TOKENS, FEE_TIERS, TOKENS_BY_CHAIN, TRADING_MODULE_ADDRESSES } from '../../../contracts/TradingModule'
 import type { ClientInfo } from '../../../hooks/manager/useManagerClients'
 import TradingViewChart from '../../../components/trading/TradingViewChart'
 
@@ -94,6 +96,53 @@ const DEFAULT_TOKEN_LIST = [
 
 const ORDERS_KEY = 'trading_trigger_orders'
 
+// Helper Hook for Manager Allowance
+function useManagerAllowance(chainId: number, tokenAddress?: string, spenderAddress?: string) {
+  const [allowance, setAllowance] = useState('0')
+  const [loading, setLoading] = useState(false)
+  const [hasAllowance, setHasAllowance] = useState(true) // Default true to prevent flash
+
+  const checkAllowance = useCallback(async () => {
+    if (!tokenAddress || !spenderAddress || typeof window === 'undefined' || !(window as any).ethereum) return
+    try {
+      const provider = new BrowserProvider((window as any).ethereum)
+      const signer = await provider.getSigner()
+      const userAddr = await signer.getAddress()
+
+      const erc20 = new Contract(tokenAddress, ['function allowance(address,address) view returns (uint256)'], provider)
+      const val = await erc20.allowance(userAddr, spenderAddress)
+      const formatted = parseFloat(formatUnits(val, 6)) // USDC is 6 decimals
+      setAllowance(formatted.toString())
+      setHasAllowance(formatted > 100) // Require > 100 USDC allowance
+    } catch (e) {
+      console.error('Allowance check failed', e)
+    }
+  }, [tokenAddress, spenderAddress])
+
+  const approve = async () => {
+    if (!tokenAddress || !spenderAddress || typeof window === 'undefined' || !(window as any).ethereum) return
+    try {
+      setLoading(true)
+      const provider = new BrowserProvider((window as any).ethereum)
+      const signer = await provider.getSigner()
+      const erc20 = new Contract(tokenAddress, ['function approve(address,uint256) returns (bool)'], signer)
+      const tx = await erc20.approve(spenderAddress, '115792089237316195423570985008687907853269984665640564039457584007913129639935') // Max
+      await tx.wait()
+      await checkAllowance()
+    } catch (e) {
+      console.error('Approve failed', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    checkAllowance()
+  }, [checkAllowance])
+
+  return { allowance, hasAllowance, approve, loading, checkAllowance }
+}
+
 export default function SpotTrading({
   clients,
   isLoadingClients,
@@ -120,6 +169,26 @@ export default function SpotTrading({
     downloadAnalyticsCSV,
   } = useOrderEngine()
 
+  // --- Gelato Integration (Always On) ---
+  const {
+    isInitialized: isGelatoReady,
+    isSubmitting: isGelatoSubmitting,
+    isGelatoConfigured,
+    createAutonomousTrigger,
+    gelatoTasks,
+  } = useGelatoTriggers(42161) // Arbitrum
+
+  // Gelato is always used when configured - no toggle needed
+  const useGelato = isGelatoConfigured && isGelatoReady
+
+  // Manager Allowance for Gelato Fees
+  const {
+    hasAllowance: managerHasAllowance,
+    approve: approveManagerAllowance,
+    loading: approvingManager
+  } = useManagerAllowance(42161, TOKENS_BY_CHAIN[42161]?.USDC?.address, TRADING_MODULE_ADDRESSES[42161])
+
+
   const [orderType, setOrderType] = useState<OrderType>('market')
   const [tokenList, setTokenList] = useState(DEFAULT_TOKEN_LIST)
   const [tokenInSymbol, setTokenInSymbol] = useState(DEFAULT_TOKEN_LIST[0].symbol)
@@ -133,7 +202,7 @@ export default function SpotTrading({
   const [duration, setDuration] = useState('')
 
   // Triggers
-  const [priceTriggerType, setPriceTriggerType] = useState<'none' | '>=' | '<='>('none')
+  const [priceTriggerType, setPriceTriggerType] = useState<'none' | '>=' | '<='>("none")
   const [priceTriggerValue, setPriceTriggerValue] = useState('')
   const [timeTriggerType, setTimeTriggerType] = useState<'none' | 'at'>('none')
   const [timeTriggerValue, setTimeTriggerValue] = useState('')
@@ -152,7 +221,35 @@ export default function SpotTrading({
   const [tabValue, setTabValue] = useState(0)
 
   // Derived Lists - Merge trigger orders with executed orders from engine
-  const pendingOrders = orders.filter((o) => ['pending', 'triggered'].includes(o.status))
+  // Derived Lists - Merge trigger orders with executed orders from engine AND Gelato Tasks
+  const findTokenSymbol = (addr: string) => {
+    const tokens = Object.values(TOKENS_BY_CHAIN[42161] || {})
+    return tokens.find(t => t.address.toLowerCase() === addr.toLowerCase())?.symbol || 'UNK'
+  }
+
+  const findTokenDecimals = (addr: string) => {
+    const tokens = Object.values(TOKENS_BY_CHAIN[42161] || {})
+    return tokens.find(t => t.address.toLowerCase() === addr.toLowerCase())?.decimals || 18
+  }
+
+  const gelatoPendingOrders: TriggerOrder[] = gelatoTasks
+    .filter(t => ['active', 'pending', 'executing'].includes(t.status))
+    .map(t => ({
+      id: t.taskId,
+      type: 'gelato_trigger',
+      clientAddresses: t.tradeParams?.safe ? [t.tradeParams.safe] : [],
+      tokenIn: t.tradeParams?.tokenIn ? findTokenSymbol(t.tradeParams.tokenIn) : 'UNK',
+      tokenOut: t.tradeParams?.tokenOut ? findTokenSymbol(t.tradeParams.tokenOut) : 'UNK',
+      amountIn: t.tradeParams?.amountIn ?
+        (Number(t.tradeParams.amountIn) / (10 ** findTokenDecimals(t.tradeParams.tokenIn || ''))).toString() : '0',
+      status: t.status === 'executing' ? 'triggered' : 'pending',
+      createdAt: t.createdAt,
+      triggerPrice: t.triggerCondition?.price?.value,
+      triggerCondition: t.triggerCondition?.price?.condition,
+      timeTrigger: t.triggerCondition?.time,
+    }))
+
+  const pendingOrders = [...orders.filter((o) => ['pending', 'triggered'].includes(o.status)), ...gelatoPendingOrders]
 
   // Convert executed orders to display format and merge with filled trigger orders
   const executedFilledOrders: TriggerOrder[] = executedOrders
@@ -178,7 +275,22 @@ export default function SpotTrading({
       duration: o.params?.durationMinutes,
       limitPrice: undefined,
     }))
-  const filledOrders = [...orders.filter((o) => o.status === 'filled'), ...executedFilledOrders]
+  const gelatoFilledOrders: TriggerOrder[] = gelatoTasks
+    .filter(t => t.status === 'completed')
+    .map(t => ({
+      id: t.taskId,
+      type: 'gelato_trigger',
+      clientAddresses: t.tradeParams?.safe ? [t.tradeParams.safe] : [],
+      tokenIn: t.tradeParams?.tokenIn ? findTokenSymbol(t.tradeParams.tokenIn) : 'UNK',
+      tokenOut: t.tradeParams?.tokenOut ? findTokenSymbol(t.tradeParams.tokenOut) : 'UNK',
+      amountIn: t.tradeParams?.amountIn ?
+        (Number(t.tradeParams.amountIn) / (10 ** findTokenDecimals(t.tradeParams.tokenIn || ''))).toString() : '0',
+      status: 'filled',
+      createdAt: t.createdAt,
+      filledAt: t.executionData?.txHash ? new Date().toISOString() : undefined, // estimation
+    }))
+
+  const filledOrders = [...orders.filter((o) => o.status === 'filled'), ...executedFilledOrders, ...gelatoFilledOrders]
 
   // Same for failed orders
   const executedFailedOrders: TriggerOrder[] = executedOrders
@@ -204,7 +316,23 @@ export default function SpotTrading({
       duration: o.params?.durationMinutes,
       limitPrice: undefined,
     }))
-  const failedOrders = [...orders.filter((o) => ['cancelled', 'failed'].includes(o.status)), ...executedFailedOrders]
+  const gelatoFailedOrders: TriggerOrder[] = gelatoTasks
+    .filter(t => t.status === 'failed' || t.status === 'cancelled')
+    .map(t => ({
+      id: t.taskId,
+      type: 'gelato_trigger',
+      clientAddresses: t.tradeParams?.safe ? [t.tradeParams.safe] : [],
+      tokenIn: t.tradeParams?.tokenIn ? findTokenSymbol(t.tradeParams.tokenIn) : 'UNK',
+      tokenOut: t.tradeParams?.tokenOut ? findTokenSymbol(t.tradeParams.tokenOut) : 'UNK',
+      amountIn: t.tradeParams?.amountIn ?
+        (Number(t.tradeParams.amountIn) / (10 ** findTokenDecimals(t.tradeParams.tokenIn || ''))).toString() : '0',
+      status: t.status === 'cancelled' ? 'cancelled' : 'failed',
+      createdAt: t.createdAt,
+      // Store error in triggerPrice field for display in table temporarily or add error field
+      triggerPrice: t.executionData?.error ? `Error: ${t.executionData.error.substring(0, 50)}...` : undefined
+    }))
+
+  const failedOrders = [...orders.filter((o) => ['cancelled', 'failed'].includes(o.status)), ...executedFailedOrders, ...gelatoFailedOrders]
 
   // Helpers
   const shortenAddress = (addr: string) => `${addr.substring(0, 5)}...${addr.substring(addr.length - 4)}`
@@ -219,6 +347,8 @@ export default function SpotTrading({
         return 'Smart Market'
       case 'smart_twap':
         return 'Smart TWAP'
+      case 'gelato_trigger':
+        return 'Gelato Auto'
       default:
         return type.replace(/_/g, ' ').toUpperCase()
     }
@@ -422,6 +552,130 @@ export default function SpotTrading({
       return
     }
 
+    const _recipient = selectedClients[0].address
+
+    // ========================================================================
+    // GELATO MODE: Autonomous execution (no browser needed)
+    // ========================================================================
+    if (useGelato && isGelatoReady) {
+      // Check if we have triggers (time/price)
+      const hasTrigger = priceTriggerType !== 'none' || timeTriggerType !== 'none'
+
+      if (hasTrigger) {
+        // Create autonomous trigger order via Gelato
+        // Create autonomous trigger order via Gelato
+        const promises = selectedClients.map(async (client) => {
+          const _triggerOrder = {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: orderType,
+            clientAddresses: [client.address], // Individual client per task
+            tokenIn: tokenInSymbol,
+            tokenOut: tokenOutSymbol,
+            amountIn,
+            slippage: parseFloat(slippage),
+            status: 'pending' as const,
+            createdAt: new Date().toISOString(),
+          }
+
+          // LOGIC:
+          // 1. Time-Based TWAP: Schedule N tasks spread over duration.
+          // 2. Other Types (or Price Trigger): Schedule 1 task (Atomic execution).
+          //    Note: Price-Triggered TWAP falls back to atomic execution because we cannot schedule relative future times autonomously without contract state.
+
+          const isTimeBasedTWAP = (orderType === 'twap' || orderType === 'smart_twap') && timeTriggerType !== 'none' && timeTriggerValue
+          const numSlices = isTimeBasedTWAP && slices ? parseInt(slices) : 1
+          const durationMins = isTimeBasedTWAP && duration ? parseInt(duration) : 0
+
+          const tasksToCreate = []
+
+          if (isTimeBasedTWAP) {
+            const startTime = new Date(timeTriggerValue).getTime()
+            const intervalMs = (durationMins * 60 * 1000) / numSlices
+            const amountPerSlice = (parseFloat(amountIn) / numSlices).toString() // logic check: amountIn is string
+
+            for (let i = 0; i < numSlices; i++) {
+              const executionTime = new Date(startTime + (i * intervalMs))
+
+              tasksToCreate.push({
+                amountOffset: amountPerSlice,
+                executeAt: executionTime,
+                type: orderType, // Label as TWAP
+              })
+            }
+          } else {
+            // Standard or Price Trigger (One-Shot)
+            tasksToCreate.push({
+              amountOffset: amountIn,
+              executeAt: timeTriggerType !== 'none' && timeTriggerValue ? new Date(timeTriggerValue) : undefined,
+              type: orderType // Might be TWAP (price-triggered) acting as Market
+            })
+          }
+
+          // Execute creation for all generated tasks
+          const taskPromises = tasksToCreate.map(async (taskConfig) => {
+            const triggerOrder = {
+              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              type: taskConfig.type,
+              clientAddresses: [client.address],
+              tokenIn: tokenInSymbol,
+              tokenOut: tokenOutSymbol,
+              amountIn: taskConfig.amountOffset,
+              slippage: parseFloat(slippage),
+              status: 'pending' as const,
+              createdAt: new Date().toISOString(),
+            }
+
+            const triggerConfig: {
+              type: 'time' | 'price' | 'both'
+              executeAt?: Date
+              price?: { value: string; condition: 'above' | 'below' }
+            } = {
+              type: priceTriggerType !== 'none' && timeTriggerType !== 'none' ? 'both'
+                : timeTriggerType !== 'none' ? 'time' : 'price'
+            }
+
+            // Set Time
+            if (taskConfig.executeAt) {
+              triggerConfig.executeAt = taskConfig.executeAt
+            }
+
+            // Set Price (if exists) - Note: For Time-TWAP, we usually don't mix price trigger unless "Start at T AND Price > P", 
+            // but here we apply the price condition to ALL slices if set.
+            if (priceTriggerType !== 'none' && priceTriggerValue) {
+              triggerConfig.price = {
+                value: priceTriggerValue,
+                condition: priceTriggerType === '>=' ? 'above' : 'below'
+              }
+            }
+
+            return await createAutonomousTrigger(triggerOrder as any, triggerConfig)
+          })
+
+          return Promise.all(taskPromises)
+        })
+
+        const results = (await Promise.all(promises)).flat()
+        const successes = results.filter(r => r.success).length
+
+        if (successes > 0) {
+          setMessage({
+            type: 'success',
+            text: `Created ${successes} Gelato Triggers. (Executes automatically)`
+          })
+          setAmountIn('')
+        } else {
+          setMessage({ type: 'error', text: `Failed to create triggers: ${results[0]?.error || 'Unknown error'}` })
+        }
+        return
+      }
+
+      // No trigger with Gelato mode = fall through to standard execution below
+    }
+
+    // ========================================================================
+    // CLIENT-SIDE MODE: Original behavior (requires browser open)
+    // ========================================================================
+
     // Has price/time triggers? Save as pending order for monitoring
     if (priceTriggerType !== 'none' || timeTriggerType !== 'none') {
       const newOrder: TriggerOrder = {
@@ -445,7 +699,7 @@ export default function SpotTrading({
       const updated = [newOrder, ...orders]
       setOrders(updated)
       localStorage.setItem(ORDERS_KEY, JSON.stringify(updated.slice().reverse()))
-      setMessage({ type: 'success', text: 'Trigger Order Created!' })
+      setMessage({ type: 'success', text: 'Trigger Order Created! (Browser must stay open)' })
       setAmountIn('')
       setChunks('')
       setSlices('')
@@ -1049,13 +1303,23 @@ export default function SpotTrading({
                   </Paper>
                 )}
 
+                {useGelato && !managerHasAllowance && (
+                  <Alert severity="warning" sx={{ mb: 2 }} action={
+                    <Button color="inherit" size="small" onClick={approveManagerAllowance} disabled={approvingManager}>
+                      {approvingManager ? 'Approving...' : 'Approve USDC'}
+                    </Button>
+                  }>
+                    Manager must approve USDC for Gelato fees.
+                  </Alert>
+                )}
+
                 <Button
                   fullWidth
                   variant="contained"
                   size="large"
                   onClick={handleSubmit}
-                  disabled={isTrading || selectedClients.length === 0 || !amountIn}
-                  startIcon={isTrading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
+                  disabled={isTrading || isGelatoSubmitting || selectedClients.length === 0 || !amountIn || (useGelato && !managerHasAllowance)}
+                  startIcon={isTrading || isGelatoSubmitting ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
                 >
                   {priceTriggerType !== 'none' || timeTriggerType !== 'none'
                     ? 'Create Trigger Order'

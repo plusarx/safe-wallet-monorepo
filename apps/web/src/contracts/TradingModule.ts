@@ -2,7 +2,8 @@
 // TradingModule contract addresses per chain
 export const TRADING_MODULE_ADDRESSES: { [chainId: number]: string } = {
     // 11155111: '0x3E623F647F5Bac0816e88B8FEE93Db92240C772e', // Sepolia (Deprecated)
-    42161: '0x05bf469e533214E20fE0efDDDAE6EE3f9a2c5098', // Arbitrum
+    // 42161: '0x68497467d5B38E5Bf166296bF9883EefFC5FEE6d', // Arbitrum (OLD - GelatoRelayContext bug)
+    42161: '0xC1f576B47d1E443870D79A58ED8DA0133ACECd35', // Arbitrum (FIXED)
 }
 
 // Default to Sepolia for backwards compatibility
@@ -26,6 +27,7 @@ export const TRADING_MODULE_ABI = [
 
     // Single trade
     'function executeTrade((address safe, address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut, uint24 feeTier, uint256 deadline) params) returns (uint256 amountOut)',
+    'function executeTradeWithSignature((address safe, address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut, uint24 feeTier, uint256 deadline) params, bytes signature) returns (uint256 amountOut)',
 
     // Batch trade - execute same trade across multiple Safes
     'function executeBatchTrade(address[] safes, address tokenIn, address tokenOut, uint256[] amounts, uint256 minAmountOut, uint24 feeTier, uint256 deadline) returns (uint256[] amountsOut)',

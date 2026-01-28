@@ -49,6 +49,8 @@
     "@emotion/react": "^11.13.5",
     "@emotion/server": "^11.11.0",
     "@emotion/styled": "^11.13.5",
+    "@gelatocloud/gasless": "^0.0.5",
+    "@gelatonetwork/relay-sdk": "^5.6.1",
     "@gnosis.pm/zodiac": "^4.0.3",
     "@ledgerhq/context-module": "^1.8.0",
     "@ledgerhq/device-management-kit": "^0.9.1",
@@ -97,7 +99,7 @@
     "react-redux": "^9.1.2",
     "react-ts-tradingview-widgets": "^1.2.8",
     "semver": "^7.7.1",
-    "viem": "^2.44.2",
+    "viem": "^2.45.0",
     "zodiac-roles-deployments": "^2.3.4"
   },
   "devDependencies": {

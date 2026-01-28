@@ -34,7 +34,10 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import ReceiptIcon from '@mui/icons-material/Receipt'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
+import WarningIcon from '@mui/icons-material/Warning'
+import { AlertTitle } from '@mui/material'
 import { useDelegationModule, PERMISSION } from '../hooks/useDelegationModule'
+import { useSafeSDK } from '../hooks/useSafeSDK'
 
 // Invoice utilities
 import { getPendingInvoicesForClient, updateInvoiceStatus } from '@/utils/invoiceStorage'
@@ -49,6 +52,62 @@ interface ManagerDelegation {
   isActive: boolean
 }
 
+function ManagerRemovedWarning({ delegations }: { delegations: ManagerDelegation[] }) {
+  const { state, disableModules } = useSafeSDK()
+  const [isDisabling, setIsDisabling] = useState(false)
+  const [disableError, setDisableError] = useState<string | null>(null)
+
+  // Show warning if module is enabled AND no active delegations
+  // Note: We might need to ensure SafeSDK is initialized
+  const shouldShow = state.isModuleEnabled && delegations.filter(d => d.isActive).length === 0
+
+  if (!shouldShow) return null
+
+  const handleDisable = async () => {
+    setIsDisabling(true)
+    setDisableError(null)
+    try {
+      await disableModules()
+      window.location.reload() // Reload to reflect changes
+    } catch (err: any) {
+      console.error('Failed to disable details', err)
+      setDisableError(err.message || 'Failed to disable module')
+    } finally {
+      setIsDisabling(false)
+    }
+  }
+
+  return (
+    <Alert
+      severity="warning"
+      icon={<WarningIcon fontSize="inherit" />}
+      sx={{ mb: 4, '& .MuiAlert-message': { width: '100%' } }}
+    >
+      <AlertTitle>Action Required: Manager Disconnected</AlertTitle>
+      <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+        <Typography variant="body2">
+          Your manager has removed you from their active client list.
+          To secure your Safe, please disable the trading module permissions.
+        </Typography>
+        <Button
+          color="warning"
+          variant="contained"
+          size="small"
+          onClick={handleDisable}
+          disabled={isDisabling}
+        >
+          {isDisabling ? <CircularProgress size={20} color="inherit" /> : 'Disable Module'}
+        </Button>
+      </Box>
+      {disableError && (
+        <Typography variant="caption" color="error" display="block" mt={1}>
+          Error: {disableError}
+        </Typography>
+      )}
+    </Alert>
+  )
+}
+
 export default function ClientDashboard() {
   const router = useRouter()
   const wallet = useWallet()
@@ -61,6 +120,15 @@ export default function ClientDashboard() {
   const [pendingInvoices, setPendingInvoices] = useState<Invoice[]>([])
   const [processingInvoiceId, setProcessingInvoiceId] = useState<string | null>(null)
   const [invoiceMessage, setInvoiceMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const { connectSafe } = useSafeSDK()
+
+  // Initialize Safe SDK
+  useEffect(() => {
+    if (walletAddress) {
+      connectSafe(walletAddress)
+    }
+  }, [walletAddress, connectSafe])
 
   const { isLoading, error, getManager, getDelegation, getClientManagers, revokeDelegation } = useDelegationModule()
 
@@ -214,6 +282,14 @@ export default function ClientDashboard() {
           </Button>
         </Box>
       </Box>
+
+      {/* Manager Removed Warning */}
+      {!isLoadingDelegations && delegations.filter(d => d.isActive).length === 0 && (
+        // Logic check: If module is enabled (implied if we are checking delegations) but no active delegations
+        // Ideally we check isModuleEnabled from useSafeSDK, but we can infer for now or add the hook.
+        // Let's add the hook state check
+        <ManagerRemovedWarning delegations={delegations} />
+      )}
 
       {/* Stats Cards */}
       <Grid container spacing={3} mb={4}>

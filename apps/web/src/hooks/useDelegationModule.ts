@@ -29,7 +29,8 @@ export function useDelegationModule() {
 
     const getContract = useCallback(async (needsSigner = false) => {
         if (!wallet?.provider) {
-            throw new Error('No wallet detected')
+            console.warn('Wallet provider not available')
+            return null
         }
 
         const provider = new BrowserProvider(wallet.provider)
@@ -37,18 +38,25 @@ export function useDelegationModule() {
         const chainId = Number(network.chainId)
         const address = DELEGATION_MODULE_ADDRESSES[chainId] || DELEGATION_MODULE_ADDRESSES[11155111]
 
+        if (!address) {
+            console.warn(`DelegationModule not deployed on chain ${chainId}`)
+            return null
+        }
+
         if (needsSigner) {
             const signer = await provider.getSigner()
             return new Contract(address, DELEGATION_MODULE_ABI, signer)
         }
 
         return new Contract(address, DELEGATION_MODULE_ABI, provider)
-    }, [])
+    }, [wallet?.provider])
 
     // Get manager info (returns null if not registered)
     const getManager = useCallback(async (address: string): Promise<Manager | null> => {
         try {
             const contract = await getContract()
+            if (!contract) return null
+
             // First check if manager is registered by checking isManagerActive
             // This is safer than calling getManager which reverts for unregistered
             const isActive = await contract.isManagerActive(address).catch(() => false)
@@ -90,6 +98,7 @@ export function useDelegationModule() {
     const isManagerActive = useCallback(async (address: string): Promise<boolean> => {
         try {
             const contract = await getContract()
+            if (!contract) return false
             return await contract.isManagerActive(address)
         } catch (err) {
             console.error('Error checking manager status:', err)
@@ -107,6 +116,7 @@ export function useDelegationModule() {
 
         try {
             const contract = await getContract(true)
+            if (!contract) throw new Error('No wallet connected')
             const tx = await contract.registerManager(name, feeRate)
             const receipt = await tx.wait()
             return receipt.hash
@@ -131,6 +141,7 @@ export function useDelegationModule() {
 
         try {
             const contract = await getContract(true)
+            if (!contract) throw new Error('No wallet connected')
             const tx = await contract.updateManagerInfo(name, feeRate)
             const receipt = await tx.wait()
             return receipt.hash
@@ -155,6 +166,7 @@ export function useDelegationModule() {
 
         try {
             const contract = await getContract(true)
+            if (!contract) throw new Error('No wallet connected')
             const tx = await contract.delegateToManager(managerAddress, permissions)
             const receipt = await tx.wait()
             return receipt.hash
@@ -179,6 +191,7 @@ export function useDelegationModule() {
 
         try {
             const contract = await getContract(true)
+            if (!contract) throw new Error('No wallet connected')
             const tx = await contract.updatePermissions(managerAddress, newPermissions)
             const receipt = await tx.wait()
             return receipt.hash
@@ -200,6 +213,7 @@ export function useDelegationModule() {
 
         try {
             const contract = await getContract(true)
+            if (!contract) throw new Error('No wallet connected')
             const tx = await contract.revokeDelegation(managerAddress)
             const receipt = await tx.wait()
             return receipt.hash
@@ -214,6 +228,28 @@ export function useDelegationModule() {
         }
     }, [getContract])
 
+    // Remove client (Manager only)
+    const removeClient = useCallback(async (clientAddress: string): Promise<string> => {
+        setIsLoading(true)
+        setError(null)
+
+        try {
+            const contract = await getContract(true)
+            if (!contract) throw new Error('No wallet connected')
+            const tx = await contract.removeClient(clientAddress)
+            const receipt = await tx.wait()
+            return receipt.hash
+        } catch (err: unknown) {
+            const message = (err as { reason?: string; message?: string }).reason ||
+                (err as { message?: string }).message ||
+                'Failed to remove client'
+            setError(message)
+            throw new Error(message)
+        } finally {
+            setIsLoading(false)
+        }
+    }, [getContract])
+
     // Get delegation
     const getDelegation = useCallback(async (
         clientAddress: string,
@@ -221,6 +257,7 @@ export function useDelegationModule() {
     ): Promise<Delegation | null> => {
         try {
             const contract = await getContract()
+            if (!contract) return null
             const result = await contract.getDelegation(clientAddress, managerAddress)
             return {
                 client: result[0],
@@ -239,6 +276,7 @@ export function useDelegationModule() {
     const getClientManagers = useCallback(async (clientAddress: string): Promise<string[]> => {
         try {
             const contract = await getContract()
+            if (!contract) return []
             return await contract.getClientManagers(clientAddress)
         } catch (err) {
             console.error('Error getting client managers:', err)
@@ -250,6 +288,7 @@ export function useDelegationModule() {
     const getManagerClients = useCallback(async (managerAddress: string): Promise<string[]> => {
         try {
             const contract = await getContract()
+            if (!contract) return []
             return await contract.getManagerClients(managerAddress)
         } catch (err) {
             console.error('Error getting manager clients:', err)
@@ -265,6 +304,7 @@ export function useDelegationModule() {
     ): Promise<boolean> => {
         try {
             const contract = await getContract()
+            if (!contract) return false
             return await contract.isAuthorized(clientAddress, managerAddress, permission)
         } catch (err) {
             console.error('Error checking authorization:', err)
@@ -282,6 +322,7 @@ export function useDelegationModule() {
         delegateToManager,
         updatePermissions,
         revokeDelegation,
+        removeClient,
         getDelegation,
         getClientManagers,
         getManagerClients,

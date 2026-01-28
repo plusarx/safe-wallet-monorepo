@@ -302,6 +302,73 @@ export const useManagerStats = () => {
       }
 
       executionRecords.sort((a, b) => b.blockNumber - a.blockNumber)
+
+      // --- 3. Merge with Gelato LocalStorage History ---
+      try {
+        const gelatoStorageKey = 'gelato_trigger_tasks_v3'
+        const storedTasks = localStorage.getItem(gelatoStorageKey)
+        if (storedTasks) {
+          const tasks = JSON.parse(storedTasks)
+          const completedTasks = tasks.filter((t: any) => t.status === 'completed')
+
+          for (const task of completedTasks) {
+            const txHash = task.executionData?.txHash
+            if (!txHash) continue
+
+            // Check if already in executionRecords
+            if (executionRecords.some(e => e.txHash === txHash)) continue
+
+            // Check if this client belongs to this manager
+            const clientAddr = task.tradeParams?.safe?.toLowerCase()
+            if (clientAddresses.length > 0 && !clientAddresses.some(c => c.toLowerCase() === clientAddr)) continue
+
+            const tokenInAddr = task.tradeParams?.tokenIn || ''
+            const tokenOutAddr = task.tradeParams?.tokenOut || ''
+
+            // Get token symbols
+            let tokenInSymbol = 'UNK'
+            let tokenOutSymbol = 'UNK'
+            if (tokens) {
+              const tIn = Object.values(tokens).find(t => t.address.toLowerCase() === tokenInAddr.toLowerCase())
+              const tOut = Object.values(tokens).find(t => t.address.toLowerCase() === tokenOutAddr.toLowerCase())
+              tokenInSymbol = tIn?.symbol || tokenInAddr.slice(0, 6)
+              tokenOutSymbol = tOut?.symbol || tokenOutAddr.slice(0, 6)
+            }
+
+            const amountInWei = BigInt(task.tradeParams?.amountIn || '0')
+            const decimals = tokenInSymbol === 'USDC' ? 6 : 18
+            const amountIn = formatUnits(amountInWei, decimals)
+
+            executionRecords.push({
+              txHash,
+              timestamp: new Date(task.createdAt),
+              type: 'swap',
+              tokenIn: tokenInSymbol,
+              tokenOut: tokenOutSymbol,
+              amountIn,
+              feeAmount: '0',
+              safe: task.tradeParams?.safe || '',
+              status: 'success',
+              blockNumber: 0, // Unknown for localStorage
+            })
+
+            totalTrades++
+            const volumeInToken = parseFloat(amountIn)
+            totalVolumeUSD += volumeInToken * (tokenInSymbol === 'USDC' ? 1 : ethPriceUSD)
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load Gelato history from localStorage:', err)
+      }
+
+      // Re-sort after merging
+      executionRecords.sort((a, b) => {
+        // Sort by timestamp if blockNumber is 0
+        if (a.blockNumber === 0 || b.blockNumber === 0) {
+          return b.timestamp.getTime() - a.timestamp.getTime()
+        }
+        return b.blockNumber - a.blockNumber
+      })
       setExecutions(executionRecords)
 
       setSummary({

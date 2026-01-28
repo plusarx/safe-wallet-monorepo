@@ -156,7 +156,7 @@ export default function TradingTerminal() {
     } catch (err) {
       console.error('Failed to load clients:', err)
     }
-  }, [walletAddress, getManagerClients, getDelegation])
+  }, [walletAddress, getManagerClients, getDelegation, tokenIn.address, tokenIn.symbol])
 
   // Calculate fee when amount changes
   useEffect(() => {
@@ -349,7 +349,7 @@ export default function TradingTerminal() {
                       indeterminate={
                         selectedClients.length > 0 &&
                         selectedClients.length <
-                          clients.filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter).length
+                        clients.filter((c) => walletTypeFilter === 'all' || c.walletType === walletTypeFilter).length
                       }
                       onChange={toggleSelectAll}
                     />

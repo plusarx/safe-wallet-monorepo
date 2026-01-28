@@ -32,10 +32,12 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import ReceiptIcon from '@mui/icons-material/Receipt'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
+import DeleteIcon from '@mui/icons-material/Delete'
 
 // Hooks and Contracts
 import { useManagerStats, type ClientInfo } from '../../../hooks/manager/useManagerStats'
 import { useTradingModule } from '../../../hooks/useTradingModule'
+import { useDelegationModule } from '../../../hooks/useDelegationModule'
 import useWallet from '@/hooks/wallets/useWallet'
 
 // Invoice utilities
@@ -97,6 +99,13 @@ export default function Clients() {
 
   // Client Info Dialog State
   const [openInfoDialog, setOpenInfoDialog] = useState(false)
+
+  // Delete Client Dialog State
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Hooks
+  const { removeClient } = useDelegationModule()
 
   // Invoice Dialog State
   const [openInvoiceDialog, setOpenInvoiceDialog] = useState(false)
@@ -184,6 +193,27 @@ export default function Clients() {
       setInvoiceMessage({ type: 'error', text: errorMessage })
     } finally {
       setIsSubmittingInvoice(false)
+    }
+  }
+
+  const handleOpenDeleteDialog = (client: ClientInfo) => {
+    setSelectedClient(client)
+    setOpenDeleteDialog(true)
+  }
+
+  const handleDeleteClient = async () => {
+    if (!selectedClient) return
+
+    setIsDeleting(true)
+    try {
+      await removeClient(selectedClient.address)
+      setOpenDeleteDialog(false)
+      refresh() // Refresh client list
+    } catch (err: unknown) {
+      console.error('Failed to remove client:', err)
+      // Error handling is managed by hook, but could add local alert here if needed
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -295,6 +325,11 @@ export default function Clients() {
                         <Tooltip title="Set Daily Limit">
                           <IconButton onClick={() => handleOpenLimitDialog(client)} size="small">
                             <SettingsIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Remove Client">
+                          <IconButton onClick={() => handleOpenDeleteDialog(client)} size="small" color="error">
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       </Box>
@@ -523,6 +558,25 @@ export default function Clients() {
             disabled={!invoiceAmount || parseFloat(invoiceAmount) <= 0 || isSubmittingInvoice}
           >
             {isSubmittingInvoice ? <CircularProgress size={24} color="inherit" /> : 'Send Invoice'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={openDeleteDialog} onClose={() => !isDeleting && setOpenDeleteDialog(false)}>
+        <DialogTitle>Remove Client</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to remove <b>{selectedClient ? shortenAddress(selectedClient.address) : ''}</b>?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This will revoke your permissions to manage this Safe. The client will be notified to disable the module.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDeleteDialog(false)} disabled={isDeleting}>Cancel</Button>
+          <Button onClick={handleDeleteClient} color="error" variant="contained" disabled={isDeleting}>
+            {isDeleting ? <CircularProgress size={24} color="inherit" /> : 'Remove'}
           </Button>
         </DialogActions>
       </Dialog>

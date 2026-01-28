@@ -178,6 +178,79 @@ export function useSafeSDK() {
     }, [safeSdk])
 
     /**
+     * Disable both DelegationModule and TradingModule in a single batch transaction
+     */
+    const disableModules = useCallback(async (): Promise<string | null> => {
+        if (!safeSdk) {
+            setError('Safe not connected')
+            return null
+        }
+
+        setIsLoading(true)
+        setError(null)
+
+        try {
+            const provider = new BrowserProvider(window.ethereum as any)
+            const network = await provider.getNetwork()
+            const chainId = Number(network.chainId)
+            const delegationAddress = DELEGATION_MODULE_ADDRESSES[chainId] || DELEGATION_MODULE_ADDRESSES[11155111]
+            const tradingAddress = TRADING_MODULE_ADDRESSES[chainId] || TRADING_MODULE_ADDRESSES[11155111]
+
+            const modules = await safeSdk.getModules()
+            const delegationEnabled = modules.some(
+                (m: string) => m.toLowerCase() === delegationAddress.toLowerCase()
+            )
+            const tradingEnabled = modules.some(
+                (m: string) => m.toLowerCase() === tradingAddress.toLowerCase()
+            )
+
+            if (!delegationEnabled && !tradingEnabled) {
+                return 'already_disabled'
+            }
+
+            const transactions: MetaTransactionData[] = []
+
+            if (delegationEnabled) {
+                const disableDelegationTx = await safeSdk.createDisableModuleTx(delegationAddress)
+                transactions.push({
+                    to: disableDelegationTx.data.to,
+                    value: disableDelegationTx.data.value,
+                    data: disableDelegationTx.data.data,
+                })
+            }
+
+            if (tradingEnabled) {
+                const disableTradingTx = await safeSdk.createDisableModuleTx(tradingAddress)
+                transactions.push({
+                    to: disableTradingTx.data.to,
+                    value: disableTradingTx.data.value,
+                    data: disableTradingTx.data.data,
+                })
+            }
+
+            const safeTransaction = await safeSdk.createTransaction({ transactions })
+            const signedTx = await safeSdk.signTransaction(safeTransaction)
+            const txResult = await safeSdk.executeTransaction(signedTx)
+            const receipt = await (txResult.transactionResponse as any)?.wait()
+
+            setState(prev => ({
+                ...prev,
+                isDelegationModuleEnabled: false,
+                isTradingModuleEnabled: false
+            }))
+
+            return receipt?.hash || 'success'
+        } catch (err: any) {
+            const message = err.message || 'Failed to disable modules'
+            setError(message)
+            console.error('Disable modules error:', err)
+            return null
+        } finally {
+            setIsLoading(false)
+        }
+    }, [safeSdk])
+
+    /**
      * Execute arbitrary contract call from Safe
      */
     const executeContractCall = useCallback(async (
@@ -275,6 +348,7 @@ export function useSafeSDK() {
         state: { ...state, isModuleEnabled },
         connectSafe,
         enableModules,
+        disableModules,
         enableDelegationModule: enableModules, // Backward compat
         executeContractCall,
         executeBatch,

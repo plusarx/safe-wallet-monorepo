@@ -3,7 +3,8 @@
 
 export const DELEGATION_MODULE_ADDRESSES: { [chainId: number]: string } = {
     // 11155111: '0xD9e6B231EfA5175a322d610ce22d247bF0ee607B', // Sepolia (Deprecated)
-    42161: '0xF15763E65314d8B14E51C889bf6828242aeB1D42', // Arbitrum
+    // 42161: '0xF15763E65314d8B14E51C889bf6828242aeB1D42', // Old Arbitrum
+    42161: '0xA95E322A2Bcf4D978245331f301543d63788537B', // Arbitrum
 }
 
 // Default to Sepolia for backwards compatibility
@@ -21,6 +22,7 @@ export const DELEGATION_MODULE_ABI = [
     'function updateManagerInfo(string name, uint256 feeRate) external',
     'function deactivateManager() external',
     'function reactivateManager() external',
+    'function removeClient(address client) external',
 
     // Client/Safe functions
     'function delegateToManager(address manager, uint8 permissions) external',
