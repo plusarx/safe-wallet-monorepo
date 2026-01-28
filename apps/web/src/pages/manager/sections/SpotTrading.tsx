@@ -563,7 +563,6 @@ export default function SpotTrading({
 
       if (hasTrigger) {
         // Create autonomous trigger order via Gelato
-        // Create autonomous trigger order via Gelato
         const promises = selectedClients.map(async (client) => {
           const _triggerOrder = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -709,6 +708,16 @@ export default function SpotTrading({
 
     // Immediate execution via Order Engine
     try {
+      console.log('--- Executing Order ---')
+      console.log('Order Type:', orderType)
+      console.log('Selected Clients:', selectedClients.length, selectedClients.map(c => c.address))
+      console.log('Orignal Clients Prop Length:', clients.length)
+
+      if (selectedClients.length === 0) {
+        setMessage({ type: 'error', text: 'State Error: No clients selected for execution' })
+        return
+      }
+
       await executeOrder({
         orderType: orderType as EngineOrderType,
         clientAddresses: selectedClients.map((c) => c.address),

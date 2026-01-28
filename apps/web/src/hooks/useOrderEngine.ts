@@ -622,7 +622,9 @@ export function useOrderEngine() {
         if (clientAddresses.length === 1) {
             result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, totalAmount, minOut, deadline)
         } else {
-            result = await executeBatchTrade(clientAddresses, tokenIn, tokenOut, totalAmount, minOut, deadline)
+            // Randomized batch execution (PnC support for base order types)
+            const shuffledClients = shuffleArray(clientAddresses)
+            result = await executeBatchTrade(shuffledClients, tokenIn, tokenOut, totalAmount, minOut, deadline)
         }
 
         if (result.success) {
@@ -706,7 +708,9 @@ export function useOrderEngine() {
             if (clientAddresses.length === 1) {
                 result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, sliceAmount, minOut, deadline)
             } else {
-                result = await executeBatchTrade(clientAddresses, tokenIn, tokenOut, sliceAmount, minOut, deadline)
+                // Randomized batch execution for each slice (High entropy PnC)
+                const shuffledClients = shuffleArray(clientAddresses)
+                result = await executeBatchTrade(shuffledClients, tokenIn, tokenOut, sliceAmount, minOut, deadline)
             }
 
             if (result.success) {

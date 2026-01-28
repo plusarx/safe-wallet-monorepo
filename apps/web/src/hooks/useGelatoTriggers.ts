@@ -56,6 +56,7 @@ export function useGelatoTriggers(chainId: number = 42161) {
     const [relay, setRelay] = useState<GelatoRelay | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const monitorIntervalRef = useRef<NodeJS.Timeout | null>(null)
+    const isScanningRef = useRef(false) // Lock to prevent overlapping intervals
 
     // Task persistence
     const loadTasks = useCallback((): GelatoTask[] => {
@@ -290,50 +291,69 @@ export function useGelatoTriggers(chainId: number = 42161) {
             console.log('[Gelato] Sending callWithSyncFee to TradingModule:', tradingModuleAddr)
 
             // Send via Gelato Relay
-            try {
-                const response = await relay.callWithSyncFee(request)
-                console.log('[Gelato] Relay task submitted:', response.taskId)
+            let retryCount = 0
+            const maxRetries = 10 // Increase to 10 to cover long rate limit windows
 
-                // Poll for status
-                let status = await relay.getTaskStatus(response.taskId)
-                let attempts = 0
-                const maxAttempts = 60 // 5 minutes max wait
 
-                while (status && !['ExecSuccess', 'ExecReverted', 'Cancelled'].includes(status.taskState) && attempts < maxAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, 5000))
-                    status = await relay.getTaskStatus(response.taskId)
-                    attempts++
-                }
+            while (retryCount <= maxRetries) {
+                try {
+                    const response = await relay.callWithSyncFee(request)
+                    console.log('[Gelato] Relay task submitted:', response.taskId)
 
-                if (status?.taskState === 'ExecSuccess') {
-                    updateTask(taskId, {
-                        status: 'completed',
-                        executionData: {
-                            txHash: status.transactionHash || undefined,
-                            relayTaskId: response.taskId
+                    // Poll for status
+                    let status = await relay.getTaskStatus(response.taskId)
+                    let attempts = 0
+                    const maxPolling = 60 // 5 minutes max wait
+
+                    while (status && !['ExecSuccess', 'ExecReverted', 'Cancelled'].includes(status.taskState) && attempts < maxPolling) {
+                        await new Promise(resolve => setTimeout(resolve, 5000))
+                        status = await relay.getTaskStatus(response.taskId)
+                        attempts++
+                    }
+
+                    if (status?.taskState === 'ExecSuccess') {
+                        updateTask(taskId, {
+                            status: 'completed',
+                            executionData: {
+                                txHash: status.transactionHash || undefined,
+                                relayTaskId: response.taskId
+                            }
+                        })
+                        console.log('[Gelato] Task executed successfully:', status.transactionHash)
+                        return { success: true, txHash: status.transactionHash || undefined }
+                    } else {
+                        const error = status?.lastCheckMessage || 'Execution failed'
+                        updateTask(taskId, {
+                            status: 'failed',
+                            executionData: { error, relayTaskId: response.taskId }
+                        })
+                        return { success: false, error }
+                    }
+                } catch (err: any) {
+                    // Handle Rate Limits (429)
+                    const msg = err?.message || err?.toString() || ''
+                    // Handle Rate Limits (429) case-insensitive
+                    if (msg.toLowerCase().includes('too many requests')) {
+                        console.warn(`[Gelato] Rate limit hit. Retrying (${retryCount + 1}/${maxRetries})...`)
+                        retryCount++
+                        if (retryCount <= maxRetries) {
+                            await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, retryCount))) // Exponential backoff: 4s, 8s, 16s
+                            continue
                         }
-                    })
-                    console.log('[Gelato] Task executed successfully:', status.transactionHash)
-                    return { success: true, txHash: status.transactionHash || undefined }
-                } else {
-                    const error = status?.lastCheckMessage || 'Execution failed'
-                    updateTask(taskId, {
-                        status: 'failed',
-                        executionData: { error, relayTaskId: response.taskId }
-                    })
-                    return { success: false, error }
-                }
+                    }
 
-            } catch (err: any) {
-                // Handling transfer failures (Allowance issues)
-                if (err.message && err.message.includes('ERC20')) {
-                    const msg = `Gelato Error: Execution Failed. Please ensure you (Manager) have approved USDC for the TradingModule.`
-                    console.error(msg)
-                    updateTask(taskId, { status: 'failed', executionData: { error: msg } })
-                    return { success: false, error: msg }
+                    // Handling transfer failures (Allowance issues)
+                    if (err.message && err.message.includes('ERC20')) {
+                        const msg = `Gelato Error: Execution Failed. Please ensure you (Manager) have approved USDC for the TradingModule.`
+                        console.error(msg)
+                        updateTask(taskId, { status: 'failed', executionData: { error: msg } })
+                        return { success: false, error: msg }
+                    }
+                    throw err
                 }
-                throw err
             }
+
+            return { success: false, error: 'Max retries exceeded' }
 
         } catch (err: any) {
             console.error('[Gelato] Task execution failed:', err)
@@ -349,63 +369,72 @@ export function useGelatoTriggers(chainId: number = 42161) {
      * Monitor active tasks and execute when triggers fire
      */
     const monitorAndExecuteTasks = useCallback(async () => {
-        const tasks = loadTasks()
-        const activeTasks = tasks.filter(t => t.status === 'active')
+        if (isScanningRef.current) return // Skip if already running
+        isScanningRef.current = true
 
-        for (const task of activeTasks) {
-            let shouldExecute = false
-            // Check time trigger
-            if (task.triggerCondition?.time) {
-                const triggerTime = new Date(task.triggerCondition.time)
-                if (new Date() >= triggerTime) {
-                    console.log('[Gelato] Time trigger fired for task:', task.taskId)
-                    shouldExecute = true
+        try {
+            const tasks = loadTasks()
+            const activeTasks = tasks.filter(t => t.status === 'active')
+
+            for (const task of activeTasks) {
+                let shouldExecute = false
+                // Check time trigger
+                if (task.triggerCondition?.time) {
+                    const triggerTime = new Date(task.triggerCondition.time)
+                    if (new Date() >= triggerTime) {
+                        console.log('[Gelato] Time trigger fired for task:', task.taskId)
+                        shouldExecute = true
+                    }
                 }
-            }
 
-            // Check price trigger
-            const priceTrigger = task.triggerCondition?.price
-            if (priceTrigger && !shouldExecute) {
-                try {
-                    const provider = new BrowserProvider((window as any).ethereum)
-                    const quoterAddress = QUOTER_ADDRESSES[chainId] || QUOTER_ADDRESSES[42161]
-                    const quoter = new Contract(quoterAddress, QUOTER_ABI, provider)
+                // Check price trigger
+                const priceTrigger = task.triggerCondition?.price
+                if (priceTrigger && !shouldExecute) {
+                    try {
+                        const provider = new BrowserProvider((window as any).ethereum)
+                        const quoterAddress = QUOTER_ADDRESSES[chainId] || QUOTER_ADDRESSES[42161]
+                        const quoter = new Contract(quoterAddress, QUOTER_ABI, provider)
 
-                    const tIn = task.tradeParams?.tokenIn
-                    const tOut = task.tradeParams?.tokenOut
-                    const feeTier = task.tradeParams?.feeTier || FEE_TIERS.LOW
+                        const tIn = task.tradeParams?.tokenIn
+                        const tOut = task.tradeParams?.tokenOut
+                        const feeTier = task.tradeParams?.feeTier || FEE_TIERS.LOW
 
-                    if (tIn && tOut) {
-                        const tokens = TOKENS_BY_CHAIN[chainId]
-                        const tInInfo = Object.values(tokens || {}).find(t => t.address.toLowerCase() === tIn.toLowerCase())
-                        const tOutInfo = Object.values(tokens || {}).find(t => t.address.toLowerCase() === tOut.toLowerCase())
+                        if (tIn && tOut) {
+                            const tokens = TOKENS_BY_CHAIN[chainId]
+                            const tInInfo = Object.values(tokens || {}).find(t => t.address.toLowerCase() === tIn.toLowerCase())
+                            const tOutInfo = Object.values(tokens || {}).find(t => t.address.toLowerCase() === tOut.toLowerCase())
 
-                        if (tInInfo && tOutInfo) {
-                            const oneUnit = parseUnits('1', tInInfo.decimals)
-                            const quoteWei = await quoter.quoteExactInputSingle.staticCall(
-                                tIn, tOut, feeTier, oneUnit, 0
-                            )
-                            const currentPrice = parseFloat(formatUnits(quoteWei, tOutInfo.decimals))
-                            const triggerPrice = parseFloat(priceTrigger.value)
+                            if (tInInfo && tOutInfo) {
+                                const oneUnit = parseUnits('1', tInInfo.decimals)
+                                const quoteWei = await quoter.quoteExactInputSingle.staticCall(
+                                    tIn, tOut, feeTier, oneUnit, 0
+                                )
+                                const currentPrice = parseFloat(formatUnits(quoteWei, tOutInfo.decimals))
+                                const triggerPrice = parseFloat(priceTrigger.value)
 
-                            // Check condition
-                            if (priceTrigger.condition === 'above' && currentPrice >= triggerPrice) {
-                                console.log(`[Gelato] Price trigger fired (Above): ${currentPrice} >= ${triggerPrice}`)
-                                shouldExecute = true
-                            } else if (priceTrigger.condition === 'below' && currentPrice <= triggerPrice) {
-                                console.log(`[Gelato] Price trigger fired (Below): ${currentPrice} <= ${triggerPrice}`)
-                                shouldExecute = true
+                                // Check condition
+                                if (priceTrigger.condition === 'above' && currentPrice >= triggerPrice) {
+                                    console.log(`[Gelato] Price trigger fired (Above): ${currentPrice} >= ${triggerPrice}`)
+                                    shouldExecute = true
+                                } else if (priceTrigger.condition === 'below' && currentPrice <= triggerPrice) {
+                                    console.log(`[Gelato] Price trigger fired (Below): ${currentPrice} <= ${triggerPrice}`)
+                                    shouldExecute = true
+                                }
                             }
                         }
+                    } catch (err) {
+                        console.error('[Gelato] Price check failed:', err)
                     }
-                } catch (err) {
-                    console.error('[Gelato] Price check failed:', err)
+                }
+
+                if (shouldExecute) {
+                    await executeTask(task.taskId)
+                    // Stagger execution to avoid rate limits
+                    await new Promise(resolve => setTimeout(resolve, 10000)) // 10s delay between tasks
                 }
             }
-
-            if (shouldExecute) {
-                await executeTask(task.taskId)
-            }
+        } finally {
+            isScanningRef.current = false // Release lock
         }
     }, [loadTasks, executeTask, chainId])
 
