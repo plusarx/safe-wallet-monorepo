@@ -52,14 +52,18 @@ interface ManagerDelegation {
   isActive: boolean
 }
 
-function ManagerRemovedWarning({ delegations }: { delegations: ManagerDelegation[] }) {
-  const { state, disableModules } = useSafeSDK()
+interface ManagerRemovedWarningProps {
+  delegations: ManagerDelegation[]
+  isModuleEnabled: boolean
+  disableModules: () => Promise<string | null>
+}
+
+function ManagerRemovedWarning({ delegations, isModuleEnabled, disableModules }: ManagerRemovedWarningProps) {
   const [isDisabling, setIsDisabling] = useState(false)
   const [disableError, setDisableError] = useState<string | null>(null)
 
   // Show warning if module is enabled AND no active delegations
-  // Note: We might need to ensure SafeSDK is initialized
-  const shouldShow = state.isModuleEnabled && delegations.filter(d => d.isActive).length === 0
+  const shouldShow = isModuleEnabled && delegations.filter(d => d.isActive).length === 0
 
   if (!shouldShow) return null
 
@@ -121,7 +125,7 @@ export default function ClientDashboard() {
   const [processingInvoiceId, setProcessingInvoiceId] = useState<string | null>(null)
   const [invoiceMessage, setInvoiceMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const { connectSafe } = useSafeSDK()
+  const { connectSafe, state: safeState, disableModules } = useSafeSDK()
 
   // Initialize Safe SDK
   useEffect(() => {
@@ -129,6 +133,8 @@ export default function ClientDashboard() {
       connectSafe(walletAddress)
     }
   }, [walletAddress, connectSafe])
+
+  // ... (rest of hook calls)
 
   const { isLoading, error, getManager, getDelegation, getClientManagers, revokeDelegation } = useDelegationModule()
 
@@ -284,11 +290,12 @@ export default function ClientDashboard() {
       </Box>
 
       {/* Manager Removed Warning */}
-      {!isLoadingDelegations && delegations.filter(d => d.isActive).length === 0 && (
-        // Logic check: If module is enabled (implied if we are checking delegations) but no active delegations
-        // Ideally we check isModuleEnabled from useSafeSDK, but we can infer for now or add the hook.
-        // Let's add the hook state check
-        <ManagerRemovedWarning delegations={delegations} />
+      {!isLoadingDelegations && (
+        <ManagerRemovedWarning
+          delegations={delegations}
+          isModuleEnabled={safeState.isModuleEnabled}
+          disableModules={disableModules}
+        />
       )}
 
       {/* Stats Cards */}
