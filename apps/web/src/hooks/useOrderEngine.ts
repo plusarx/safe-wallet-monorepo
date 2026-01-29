@@ -33,6 +33,9 @@ export interface OrderParams {
 
     // Smart params
     chunks?: number
+
+    // Amount Mode
+    amountMode?: 'fixed' | 'percentage'
 }
 
 export interface OrderState {
@@ -307,6 +310,39 @@ export function useOrderEngine() {
     }, [getProvider])
 
     // -------------------------------------------------------------------------
+    // Balance Helper
+    // -------------------------------------------------------------------------
+
+
+
+    const calculateOrderAmounts = useCallback(async (
+        clientAddresses: string[],
+        tokenIn: { address: string; decimals: number },
+        amountVal: string,
+        mode: 'fixed' | 'percentage'
+    ): Promise<string[]> => {
+        if (mode === 'fixed') {
+            return clientAddresses.map(() => amountVal)
+        } else {
+            // Percentage mode: fetch balances and calculate
+            const percent = parseFloat(amountVal)
+            if (isNaN(percent) || percent <= 0 || percent > 100) throw new Error('Invalid percentage')
+
+            const provider = await getProvider()
+            const erc20 = new Contract(tokenIn.address, ['function balanceOf(address) view returns (uint256)'], provider)
+
+            // Multicall would be better but parallel promises ok for <20 clients
+            const balances = await Promise.all(clientAddresses.map(addr => erc20.balanceOf(addr)))
+
+            return balances.map(bal => {
+                const balFormatted = formatUnits(bal, tokenIn.decimals)
+                const amount = parseFloat(balFormatted) * (percent / 100)
+                return amount.toFixed(tokenIn.decimals)
+            })
+        }
+    }, [getProvider])
+
+    // -------------------------------------------------------------------------
     // Quote Helper
     // -------------------------------------------------------------------------
 
@@ -436,7 +472,7 @@ export function useOrderEngine() {
         clientAddresses: string[],
         tokenIn: { address: string; decimals: number },
         tokenOut: { address: string; decimals: number },
-        amountPerClient: string,
+        amountsOrAmountPerClient: string | string[], // Changed to accept array
         minAmountOut: string,
         deadline: number,
         enableRetry: boolean = true
@@ -445,7 +481,13 @@ export function useOrderEngine() {
             try {
                 const contract = await getTradingContract(true)
 
-                const amounts = clientAddresses.map(() => parseUnits(amountPerClient, tokenIn.decimals))
+                // Handle both fixed single amount and array of amounts
+                let amounts: bigint[]
+                if (Array.isArray(amountsOrAmountPerClient)) {
+                    amounts = amountsOrAmountPerClient.map(a => parseUnits(a, tokenIn.decimals))
+                } else {
+                    amounts = clientAddresses.map(() => parseUnits(amountsOrAmountPerClient, tokenIn.decimals))
+                }
 
                 console.log('[OrderEngine] Executing Batch Trade for:', clientAddresses)
                 const batchParams = {
@@ -596,10 +638,16 @@ export function useOrderEngine() {
     // -------------------------------------------------------------------------
 
     const executeMarketOrder = useCallback(async (params: OrderParams): Promise<boolean> => {
-        const { clientAddresses, tokenIn, tokenOut, totalAmount, slippage } = params
+        const { clientAddresses, tokenIn, tokenOut, totalAmount, slippage, amountMode = 'fixed' } = params
 
-        // Get quote (this is our expected amount out)
-        const quote = await getQuote(tokenIn.address, tokenOut.address, totalAmount, tokenIn.decimals, tokenOut.decimals)
+        // Calculate actual amounts per client
+        const amounts = await calculateOrderAmounts(clientAddresses, tokenIn, totalAmount, amountMode)
+
+        // For logging/tracking, we need an aggregate "total" for UX
+        const aggregateTotal = amounts.reduce((acc, val) => acc + parseFloat(val), 0).toString()
+
+        // Get quote (this is our expected aggregated amount out)
+        const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
         const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
         const deadline = Math.floor(Date.now() / 1000) + 600
 
@@ -620,22 +668,37 @@ export function useOrderEngine() {
         let result: ExecutionResult
 
         if (clientAddresses.length === 1) {
-            result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, totalAmount, minOut, deadline)
+            result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, amounts[0], minOut, deadline)
         } else {
             // Randomized batch execution (PnC support for base order types)
-            const shuffledClients = shuffleArray(clientAddresses)
-            result = await executeBatchTrade(shuffledClients, tokenIn, tokenOut, totalAmount, minOut, deadline)
+            // We need to map the shuffled clients to their specific amounts
+            // Wait, if I shuffle clients, I must shuffle amounts to match!
+            // Or `executeBatchTrade` takes `clientAddresses` and `amounts`.
+            // I should shuffle them together.
+
+            // Helper to shuffle together
+            const clientsWithAmounts = clientAddresses.map((addr, i) => ({ addr, amt: amounts[i] }))
+            const shuffled = shuffleArray(clientsWithAmounts)
+
+            result = await executeBatchTrade(
+                shuffled.map(c => c.addr),
+                tokenIn,
+                tokenOut,
+                shuffled.map(c => c.amt),
+                minOut,
+                deadline
+            )
         }
 
         if (result.success) {
             // Calculate realized slippage and price impact
             const actualOut = result.amountOut || quote
             const realizedSlip = calculateRealizedSlippage(quote, actualOut)
-            const priceImpact = calculatePriceImpact(totalAmount, actualOut, spotPrice)
+            const priceImpact = calculatePriceImpact(aggregateTotal, actualOut, spotPrice)
 
             // Build slippage analysis for A/B testing
             const slippageAnalysis = buildSlippageAnalysis(
-                totalAmount,
+                aggregateTotal,
                 quote,
                 actualOut,
                 true // Market order IS concurrent
@@ -646,7 +709,7 @@ export function useOrderEngine() {
                 progress: 100,
                 executedSlices: 1,
                 totalSlices: 1,
-                executedVolume: totalAmount,
+                executedVolume: aggregateTotal,
                 txHashes: result.txHash ? [result.txHash] : [],
                 actualAmountOut: actualOut,
                 realizedSlippage: realizedSlip,
@@ -658,16 +721,27 @@ export function useOrderEngine() {
             updateOrderState({ status: 'failed', error: result.error })
             throw new Error(result.error)
         }
-    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState])
+    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // TWAP ORDER
     // -------------------------------------------------------------------------
 
     const executeTWAPOrder = useCallback(async (params: OrderParams): Promise<boolean> => {
-        const { clientAddresses, tokenIn, tokenOut, totalAmount, slippage, slices = 4, durationMinutes = 10 } = params
+        const { clientAddresses, tokenIn, tokenOut, totalAmount, slippage, slices = 4, durationMinutes = 10, amountMode = 'fixed' } = params
 
-        const sliceAmount = (parseFloat(totalAmount) / slices).toFixed(tokenIn.decimals)
+        // 1. Calculate TOTAL amounts for each client first (snapshot based on mode)
+        const totalAmountsPerClient = await calculateOrderAmounts(clientAddresses, tokenIn, totalAmount, amountMode)
+
+        // 2. Aggregate Total (for stats)
+        const aggregateTotal = totalAmountsPerClient.reduce((acc, val) => acc + parseFloat(val), 0).toString()
+
+        // 3. Calculate Slice Amounts: Each client's total / slices
+        const sliceAmountsPerClient = totalAmountsPerClient.map(total => (parseFloat(total) / slices).toFixed(tokenIn.decimals))
+
+        // Use aggregate slice amount for quotes (approximation)
+        const aggregateSliceAmount = (parseFloat(aggregateTotal) / slices).toFixed(tokenIn.decimals)
+
         const intervalMs = (durationMinutes * 60 * 1000) / slices
         const deadline = Math.floor(Date.now() / 1000) + (durationMinutes * 60) + 600
 
@@ -675,8 +749,8 @@ export function useOrderEngine() {
         const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals)
         const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
 
-        // Calculate total expected output
-        const totalExpectedQuote = await getQuote(tokenIn.address, tokenOut.address, totalAmount, tokenIn.decimals, tokenOut.decimals)
+        // Calculate total expected output (on aggregate)
+        const totalExpectedQuote = await getQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
 
         updateOrderState({
             expectedAmountOut: totalExpectedQuote,
@@ -700,22 +774,32 @@ export function useOrderEngine() {
                 return false
             }
 
-            // Get fresh quote for each slice
-            const quote = await getQuote(tokenIn.address, tokenOut.address, sliceAmount, tokenIn.decimals, tokenOut.decimals)
+            // Get fresh quote for each slice (using aggregate slice amount)
+            const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateSliceAmount, tokenIn.decimals, tokenOut.decimals)
             const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
 
             let result: ExecutionResult
             if (clientAddresses.length === 1) {
-                result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, sliceAmount, minOut, deadline)
+                result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, sliceAmountsPerClient[0], minOut, deadline)
             } else {
-                // Randomized batch execution for each slice (High entropy PnC)
-                const shuffledClients = shuffleArray(clientAddresses)
-                result = await executeBatchTrade(shuffledClients, tokenIn, tokenOut, sliceAmount, minOut, deadline)
+                // Randomized batch execution
+                // Shuffle clients AND their specific slice amounts
+                const clientsWithAmounts = clientAddresses.map((addr, idx) => ({ addr, amt: sliceAmountsPerClient[idx] }))
+                const shuffled = shuffleArray(clientsWithAmounts)
+
+                result = await executeBatchTrade(
+                    shuffled.map(c => c.addr),
+                    tokenIn,
+                    tokenOut,
+                    shuffled.map(c => c.amt),
+                    minOut,
+                    deadline
+                )
             }
 
             if (result.success) {
                 executedSlices++
-                totalExecutedVolume += parseFloat(sliceAmount)
+                totalExecutedVolume += parseFloat(aggregateSliceAmount)
                 if (result.txHash) txHashes.push(result.txHash)
                 if (result.amountOut) {
                     totalActualOut += parseFloat(result.amountOut)
@@ -725,7 +809,6 @@ export function useOrderEngine() {
             } else {
                 failedSlices++
                 if (result.error) errors.push(`Slice ${i + 1}: ${result.error}`)
-                // Continue with remaining slices instead of failing entirely
             }
 
             // Calculate running slippage metrics
@@ -752,37 +835,46 @@ export function useOrderEngine() {
             }
         }
 
-        // Final price impact calculation and slippage analysis
+        // Final price impact calculation
         if (totalActualOut > 0) {
             const priceImpact = calculatePriceImpact(totalExecutedVolume.toString(), totalActualOut.toString(), spotPrice)
 
-            // Build slippage analysis for A/B testing
             const slippageAnalysis = buildSlippageAnalysis(
                 totalExecutedVolume.toString(),
                 totalExpectedQuote,
                 totalActualOut.toString(),
-                true // TWAP IS concurrent
+                true
             )
 
             updateOrderState({ priceImpact, slippageAnalysis })
         }
 
-        // Return true if at least some slices succeeded
         if (executedSlices === 0) {
             throw new Error(errors.join('; ') || 'All slices failed')
         }
 
         return failedSlices === 0
-    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState])
+    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // SMART MARKET ORDER (Chunked + Randomized Concurrent)
     // -------------------------------------------------------------------------
 
     const executeSmartMarketOrder = useCallback(async (params: OrderParams): Promise<boolean> => {
-        const { clientAddresses, tokenIn, tokenOut, totalAmount, slippage, chunks = 5 } = params
+        const { clientAddresses, tokenIn, tokenOut, totalAmount, slippage, chunks = 5, amountMode = 'fixed' } = params
 
-        const chunkAmount = (parseFloat(totalAmount) / chunks).toFixed(tokenIn.decimals)
+        // 1. Calculate TOTAL amounts for each client
+        const totalAmountsPerClient = await calculateOrderAmounts(clientAddresses, tokenIn, totalAmount, amountMode)
+
+        // 2. Aggregate Total (for stats)
+        const aggregateTotal = totalAmountsPerClient.reduce((acc, val) => acc + parseFloat(val), 0).toString()
+
+        // 3. Chunk Amounts: Each client's total / chunks
+        const chunkAmountsPerClient = totalAmountsPerClient.map(total => (parseFloat(total) / chunks).toFixed(tokenIn.decimals))
+
+        // Aggregated chunk amount for quoting
+        const aggregateChunkAmount = (parseFloat(aggregateTotal) / chunks).toFixed(tokenIn.decimals)
+
         const deadline = Math.floor(Date.now() / 1000) + 600
 
         // Get spot price for price impact calculation
@@ -790,10 +882,10 @@ export function useOrderEngine() {
         const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
 
         // Get total expected output
-        const totalExpectedQuote = await getQuote(tokenIn.address, tokenOut.address, totalAmount, tokenIn.decimals, tokenOut.decimals)
+        const totalExpectedQuote = await getQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
 
-        // Get ONE quote upfront for consistent fill price across all chunks
-        const quote = await getQuote(tokenIn.address, tokenOut.address, chunkAmount, tokenIn.decimals, tokenOut.decimals)
+        // Get ONE quote upfront for consistent fill price (using aggregate chunk)
+        const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateChunkAmount, tokenIn.decimals, tokenOut.decimals)
         const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
 
         updateOrderState({
@@ -811,16 +903,25 @@ export function useOrderEngine() {
         for (let i = 0; i < chunks; i++) {
             const jitterMs = randomInt(100, 800) // 100-800ms random delay
 
-            // Randomize client order for this chunk (PnC: different permutation each time)
-            const shuffledClients = shuffleArray(clientAddresses)
+            // Randomize client order for this chunk
+            // We need to keep amounts paired with clients
+            const clientsWithAmounts = clientAddresses.map((addr, idx) => ({ addr, amt: chunkAmountsPerClient[idx] }))
+            const shuffled = shuffleArray(clientsWithAmounts)
 
             chunkPromises.push(
                 sleep(jitterMs).then(async () => {
-                    if (shuffledClients.length === 1) {
-                        return executeSingleTrade(shuffledClients[0], tokenIn, tokenOut, chunkAmount, minOut, deadline)
+                    if (shuffled.length === 1) {
+                        return executeSingleTrade(shuffled[0].addr, tokenIn, tokenOut, shuffled[0].amt, minOut, deadline)
                     } else {
-                        // Execute with randomized client order
-                        return executeBatchTrade(shuffledClients, tokenIn, tokenOut, chunkAmount, minOut, deadline)
+                        // Execute with customized amounts
+                        return executeBatchTrade(
+                            shuffled.map(c => c.addr),
+                            tokenIn,
+                            tokenOut,
+                            shuffled.map(c => c.amt),
+                            minOut,
+                            deadline
+                        )
                     }
                 })
             )
@@ -851,11 +952,13 @@ export function useOrderEngine() {
         }
 
         const allSuccess = successCount === chunks
-        const executedVolume = parseFloat(chunkAmount) * successCount
+        const executedVolume = parseFloat(aggregateChunkAmount) * successCount
 
         // Calculate slippage metrics
         const expectedForExecuted = (parseFloat(totalExpectedQuote) / chunks) * successCount
-        const realizedSlip = expectedForExecuted > 0 ? calculateRealizedSlippage(expectedForExecuted.toString(), totalActualOut.toString()) : 0
+        const realizedSlip = expectedForExecuted > 0
+            ? calculateRealizedSlippage(expectedForExecuted.toString(), totalActualOut.toString())
+            : 0
         const priceImpact = totalActualOut > 0 ? calculatePriceImpact(executedVolume.toString(), totalActualOut.toString(), spotPrice) : 0
 
         // Build slippage analysis for A/B testing
@@ -885,17 +988,39 @@ export function useOrderEngine() {
         }
 
         return allSuccess
-    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState])
+    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // SMART TWAP ORDER (TWAP + Chunking)
     // -------------------------------------------------------------------------
 
     const executeSmartTWAPOrder = useCallback(async (params: OrderParams): Promise<boolean> => {
-        const { clientAddresses, tokenIn, tokenOut, totalAmount, slippage, slices = 4, durationMinutes = 10, chunks = 2 } = params
+        const {
+            clientAddresses,
+            tokenIn,
+            tokenOut,
+            totalAmount,
+            slippage,
+            slices = 4,
+            durationMinutes = 10,
+            chunks = 2,
+            amountMode = 'fixed'
+        } = params
 
-        const sliceAmount = parseFloat(totalAmount) / slices
-        const chunkAmount = (sliceAmount / chunks).toFixed(tokenIn.decimals)
+        // 1. Calculate TOTAL amounts for each client
+        const totalAmountsPerClient = await calculateOrderAmounts(clientAddresses, tokenIn, totalAmount, amountMode)
+
+        // 2. Aggregate Total (for stats)
+        const aggregateTotal = totalAmountsPerClient.reduce((acc, val) => acc + parseFloat(val), 0).toString()
+
+        // 3. Slice Amounts
+        const sliceAmountsPerClient = totalAmountsPerClient.map(total => (parseFloat(total) / slices).toFixed(tokenIn.decimals))
+        const aggregateSliceAmount = (parseFloat(aggregateTotal) / slices).toFixed(tokenIn.decimals)
+
+        // 4. Chunk Amounts
+        const chunkAmountsPerClient = sliceAmountsPerClient.map(slice => (parseFloat(slice) / chunks).toFixed(tokenIn.decimals))
+        const aggregateChunkAmount = (parseFloat(aggregateSliceAmount) / chunks).toFixed(tokenIn.decimals)
+
         const intervalMs = (durationMinutes * 60 * 1000) / slices
         const deadline = Math.floor(Date.now() / 1000) + (durationMinutes * 60) + 600
 
@@ -935,18 +1060,27 @@ export function useOrderEngine() {
                 const jitterMs = randomInt(50, 500)
 
                 // Randomize client order for each chunk (PnC: n! permutations)
-                const shuffledClients = shuffleArray(clientAddresses)
+                // Need to pair clients with their chunk amounts for this slice
+                const clientsWithAmounts = clientAddresses.map((addr, idx) => ({ addr, amt: chunkAmountsPerClient[idx] }))
+                const shuffled = shuffleArray(clientsWithAmounts)
 
                 chunkPromises.push(
                     sleep(jitterMs).then(async () => {
-                        const quote = await getQuote(tokenIn.address, tokenOut.address, chunkAmount, tokenIn.decimals, tokenOut.decimals)
+                        const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateChunkAmount, tokenIn.decimals, tokenOut.decimals)
                         const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
 
-                        if (shuffledClients.length === 1) {
-                            return executeSingleTrade(shuffledClients[0], tokenIn, tokenOut, chunkAmount, minOut, deadline)
+                        if (shuffled.length === 1) {
+                            return executeSingleTrade(shuffled[0].addr, tokenIn, tokenOut, shuffled[0].amt, minOut, deadline)
                         } else {
-                            // Execute with randomized client order
-                            return executeBatchTrade(shuffledClients, tokenIn, tokenOut, chunkAmount, minOut, deadline)
+                            // Execute with randomized client order and specific amounts
+                            return executeBatchTrade(
+                                shuffled.map(c => c.addr),
+                                tokenIn,
+                                tokenOut,
+                                shuffled.map(c => c.amt),
+                                minOut,
+                                deadline
+                            )
                         }
                     })
                 )
@@ -958,7 +1092,7 @@ export function useOrderEngine() {
             for (const result of results) {
                 if (result.status === 'fulfilled' && result.value.success) {
                     sliceSuccess++
-                    totalExecutedVolume += parseFloat(chunkAmount)
+                    totalExecutedVolume += parseFloat(aggregateChunkAmount)
                     if (result.value.txHash) allTxHashes.push(result.value.txHash)
                     if (result.value.amountOut) {
                         totalActualOut += parseFloat(result.value.amountOut)
@@ -1105,7 +1239,7 @@ export function useOrderEngine() {
         }
 
         return finalState
-    }, [executeMarketOrder, executeTWAPOrder, executeSmartMarketOrder, executeSmartTWAPOrder, updateOrderState])
+    }, [executeMarketOrder, executeTWAPOrder, executeSmartMarketOrder, executeSmartTWAPOrder, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // CANCEL ORDER
