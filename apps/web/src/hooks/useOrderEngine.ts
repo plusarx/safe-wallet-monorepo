@@ -370,10 +370,48 @@ export function useOrderEngine() {
 
             return formatUnits(amountOutWei, tokenOutDecimals)
         } catch (err) {
-            console.error('Quote error:', err)
+            // console.warn(`Quote failed for fee ${feeTier}:`, err)
             return '0'
         }
     }, [getQuoter])
+
+    const getBestQuote = useCallback(async (
+        tokenIn: string,
+        tokenOut: string,
+        amountIn: string,
+        tokenInDecimals: number,
+        tokenOutDecimals: number
+    ): Promise<{ amountOut: string, feeTier: number }> => {
+        if (!amountIn || parseFloat(amountIn) <= 0) return { amountOut: '0', feeTier: FEE_TIERS.LOW }
+
+        const tiers = [FEE_TIERS.LOW, FEE_TIERS.MEDIUM, FEE_TIERS.HIGH]
+        let bestOut = 0n
+        let bestFee = FEE_TIERS.LOW
+
+        // We can run these in parallel
+        const results = await Promise.all(tiers.map(async (fee) => {
+            try {
+                const q = await getQuote(tokenIn, tokenOut, amountIn, tokenInDecimals, tokenOutDecimals, fee)
+                return { fee, amount: parseUnits(q, tokenOutDecimals) }
+            } catch {
+                return { fee, amount: 0n }
+            }
+        }))
+
+        for (const res of results) {
+            if (res.amount > bestOut) {
+                bestOut = res.amount
+                bestFee = res.fee
+            }
+        }
+
+        if (bestOut === 0n) return { amountOut: '0', feeTier: FEE_TIERS.LOW }
+
+        return {
+            amountOut: formatUnits(bestOut, tokenOutDecimals),
+            feeTier: bestFee
+        }
+    }, [getQuote])
 
     // -------------------------------------------------------------------------
     // Single Trade Execution
@@ -386,11 +424,12 @@ export function useOrderEngine() {
         amountIn: string,
         minAmountOut: string,
         deadline: number,
+        feeTier: number = FEE_TIERS.LOW, // Added feeTier param
         enableRetry: boolean = true
     ): Promise<ExecutionResult> => {
         const executeOnce = async (): Promise<ExecutionResult> => {
             try {
-                console.log('[OrderEngine] Executing Single Trade for:', clientAddress)
+                console.log(`[OrderEngine] Executing Single Trade for: ${clientAddress} (Fee: ${feeTier})`)
                 const contract = await getTradingContract(true)
 
                 // Verify contract exists
@@ -402,11 +441,21 @@ export function useOrderEngine() {
                     tokenOut: tokenOut.address,
                     amountIn: parseUnits(amountIn, tokenIn.decimals),
                     minAmountOut: parseUnits(minAmountOut, tokenOut.decimals),
-                    feeTier: FEE_TIERS.LOW,
+                    feeTier,
                     deadline,
                 }
 
                 console.log('[OrderEngine] Trade Params:', tradeParams)
+
+                // 1. Simulate with callStatic to check for reverts
+                try {
+                    await contract.executeTrade.staticCall(tradeParams, { gasLimit: 5000000 })
+                } catch (simulationError: any) {
+                    console.warn('[OrderEngine] Simulation failed:', simulationError)
+                    throw new Error(`Simulation failed: ${simulationError.reason || simulationError.message}`)
+                }
+
+                // 2. Execute actual transaction
                 // FORCE GAS LIMIT to bypass estimation errors (which silent-fail in some wallets)
                 const tx = await contract.executeTrade(tradeParams, { gasLimit: 5000000 })
                 console.log('[OrderEngine] Tx sent:', tx.hash)
@@ -472,9 +521,10 @@ export function useOrderEngine() {
         clientAddresses: string[],
         tokenIn: { address: string; decimals: number },
         tokenOut: { address: string; decimals: number },
-        amountsOrAmountPerClient: string | string[], // Changed to accept array
+        amountsOrAmountPerClient: string | string[],
         minAmountOut: string,
         deadline: number,
+        feeTier: number = FEE_TIERS.LOW,
         enableRetry: boolean = true
     ): Promise<ExecutionResult> => {
         const executeOnce = async (): Promise<ExecutionResult> => {
@@ -489,29 +539,48 @@ export function useOrderEngine() {
                     amounts = clientAddresses.map(() => parseUnits(amountsOrAmountPerClient, tokenIn.decimals))
                 }
 
-                console.log('[OrderEngine] Executing Batch Trade for:', clientAddresses)
+                console.log(`[OrderEngine] Executing Batch Trade for: ${clientAddresses} (Fee: ${feeTier})`)
                 const batchParams = {
                     safes: clientAddresses,
                     tokenIn: tokenIn.address,
                     tokenOut: tokenOut.address,
                     amounts,
                     minAmountOut: parseUnits(minAmountOut, tokenOut.decimals),
-                    feeTier: FEE_TIERS.LOW,
-                    deadline
+                    feeTier,
+                    deadline,
+                    gasLimit: 8000000
                 }
                 console.log('[OrderEngine] Batch Params:', batchParams)
 
-                // FORCE GAS LIMIT
+                // 1. Simulate with callStatic to check for reverts
+                try {
+                    await contract.executeBatchTrade.staticCall(
+                        clientAddresses,
+                        tokenIn.address,
+                        tokenOut.address,
+                        amounts,
+                        parseUnits(minAmountOut, tokenOut.decimals),
+                        feeTier,
+                        deadline,
+                        { gasLimit: 8000000 }
+                    )
+                } catch (simulationError: any) {
+                    console.warn('[OrderEngine] Batch simulation failed:', simulationError)
+                    throw new Error(`Simulation failed: ${simulationError.reason || simulationError.message}`)
+                }
+
+                // 2. Execute actual transaction
                 const tx = await contract.executeBatchTrade(
                     clientAddresses,
                     tokenIn.address,
                     tokenOut.address,
                     amounts,
                     parseUnits(minAmountOut, tokenOut.decimals),
-                    FEE_TIERS.LOW,
+                    feeTier,
                     deadline,
-                    { gasLimit: 8000000 } // Higher limit for batch
+                    { gasLimit: 8000000 }
                 )
+
                 console.log('[OrderEngine] Batch Tx sent:', tx.hash)
                 const receipt = await tx.wait()
                 console.log('[OrderEngine] Batch Tx confirmed:', receipt.hash)
@@ -551,9 +620,10 @@ export function useOrderEngine() {
 
                 return { success: true, txHash: receipt.hash, amountOut: totalAmountOut, gasUsed, effectiveGasPrice }
             } catch (err: any) {
+                console.error('[OrderEngine] Batch Trade Error:', err)
                 const error = err.reason || err.message || 'Batch trade failed'
-                // Don't retry on slippage errors or user rejections
-                if (error.includes('slippage') || error.includes('user rejected') || error.includes('insufficient')) {
+                // Don't retry on slippage errors or user rejections (or simulation failures)
+                if (error.includes('slippage') || error.includes('user rejected') || error.includes('insufficient') || error.includes('Simulation')) {
                     throw new Error(error)
                 }
                 return { success: false, error }
@@ -647,12 +717,16 @@ export function useOrderEngine() {
         const aggregateTotal = amounts.reduce((acc, val) => acc + parseFloat(val), 0).toString()
 
         // Get quote (this is our expected aggregated amount out)
-        const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
-        const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+        // Use getBestQuote to find optimal fee tier
+        const { amountOut: quote, feeTier } = await getBestQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
+
+        // Check if quote is valid
+        if (quote === '0') throw new Error('No liquidity found for trade')
+
         const deadline = Math.floor(Date.now() / 1000) + 600
 
         // Get spot price for price impact calculation (1 unit quote)
-        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals)
+        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals, feeTier)
         const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
 
         // Store expected amount for slippage tracking
@@ -668,15 +742,31 @@ export function useOrderEngine() {
         let result: ExecutionResult
 
         if (clientAddresses.length === 1) {
-            result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, amounts[0], minOut, deadline)
+            const sQuote = await getQuote(tokenIn.address, tokenOut.address, amounts[0], tokenIn.decimals, tokenOut.decimals, feeTier)
+            const sMin = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+            result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, amounts[0], sMin, deadline, feeTier)
         } else {
-            // Randomized batch execution (PnC support for base order types)
-            // We need to map the shuffled clients to their specific amounts
-            // Wait, if I shuffle clients, I must shuffle amounts to match!
-            // Or `executeBatchTrade` takes `clientAddresses` and `amounts`.
-            // I should shuffle them together.
+            // ALWAYS BATCH for multiple clients
+            // To be safe with non-uniform amounts, we must find the SMALLEST amount
+            // and calculate minAmountOut based on that.
+            // This ensures NO trade in the batch fails the "Too little received" check.
 
-            // Helper to shuffle together
+            // Find minimum amount (compare as BigInt to be precise, or just float for approximation)
+            let minVal = parseUnits(amounts[0], tokenIn.decimals)
+            let minAmtStr = amounts[0]
+
+            for (let i = 1; i < amounts.length; i++) {
+                const val = parseUnits(amounts[i], tokenIn.decimals)
+                if (val < minVal) {
+                    minVal = val
+                    minAmtStr = amounts[i]
+                }
+            }
+
+            // Calculate safe minOut relative to the smallest trade
+            const sQuote = await getQuote(tokenIn.address, tokenOut.address, minAmtStr, tokenIn.decimals, tokenOut.decimals, feeTier)
+            const minOutPerTrade = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+
             const clientsWithAmounts = clientAddresses.map((addr, i) => ({ addr, amt: amounts[i] }))
             const shuffled = shuffleArray(clientsWithAmounts)
 
@@ -685,10 +775,12 @@ export function useOrderEngine() {
                 tokenIn,
                 tokenOut,
                 shuffled.map(c => c.amt),
-                minOut,
-                deadline
+                minOutPerTrade,
+                deadline,
+                feeTier
             )
         }
+
 
         if (result.success) {
             // Calculate realized slippage and price impact
@@ -721,7 +813,7 @@ export function useOrderEngine() {
             updateOrderState({ status: 'failed', error: result.error })
             throw new Error(result.error)
         }
-    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
+    }, [getQuote, getBestQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // TWAP ORDER
@@ -746,11 +838,15 @@ export function useOrderEngine() {
         const deadline = Math.floor(Date.now() / 1000) + (durationMinutes * 60) + 600
 
         // Get initial spot price for tracking
-        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals)
-        const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
+        // 4. FIND BEST FEE TIER using the full amount (closest approximation to pool liquidity)
+        const { amountOut: totalExpectedQuote, feeTier } = await getBestQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
 
-        // Calculate total expected output (on aggregate)
-        const totalExpectedQuote = await getQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
+        // Check if liquidity exists
+        if (totalExpectedQuote === '0') throw new Error('No liquidity found for TWAP trade')
+
+        // Use found fee tier for spot price
+        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals, feeTier)
+        const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
 
         updateOrderState({
             expectedAmountOut: totalExpectedQuote,
@@ -774,16 +870,32 @@ export function useOrderEngine() {
                 return false
             }
 
-            // Get fresh quote for each slice (using aggregate slice amount)
-            const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateSliceAmount, tokenIn.decimals, tokenOut.decimals)
-            const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+            // Get fresh quote for each slice using the determined BEST FEE TIER
+            const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateSliceAmount, tokenIn.decimals, tokenOut.decimals, feeTier)
+
 
             let result: ExecutionResult
             if (clientAddresses.length === 1) {
-                result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, sliceAmountsPerClient[0], minOut, deadline)
+                const sQuote = await getQuote(tokenIn.address, tokenOut.address, sliceAmountsPerClient[0], tokenIn.decimals, tokenOut.decimals, feeTier)
+                const sMin = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+                result = await executeSingleTrade(clientAddresses[0], tokenIn, tokenOut, sliceAmountsPerClient[0], sMin, deadline, feeTier)
             } else {
-                // Randomized batch execution
-                // Shuffle clients AND their specific slice amounts
+                // ALWAYS BATCH logic
+                // Find minimum amount in this slice set
+                let minVal = parseUnits(sliceAmountsPerClient[0], tokenIn.decimals)
+                let minAmtStr = sliceAmountsPerClient[0]
+
+                for (let i = 1; i < sliceAmountsPerClient.length; i++) {
+                    const val = parseUnits(sliceAmountsPerClient[i], tokenIn.decimals)
+                    if (val < minVal) {
+                        minVal = val
+                        minAmtStr = sliceAmountsPerClient[i]
+                    }
+                }
+
+                const sQuote = await getQuote(tokenIn.address, tokenOut.address, minAmtStr, tokenIn.decimals, tokenOut.decimals, feeTier)
+                const minOutPerTrade = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+
                 const clientsWithAmounts = clientAddresses.map((addr, idx) => ({ addr, amt: sliceAmountsPerClient[idx] }))
                 const shuffled = shuffleArray(clientsWithAmounts)
 
@@ -792,8 +904,9 @@ export function useOrderEngine() {
                     tokenIn,
                     tokenOut,
                     shuffled.map(c => c.amt),
-                    minOut,
-                    deadline
+                    minOutPerTrade,
+                    deadline,
+                    feeTier
                 )
             }
 
@@ -854,7 +967,7 @@ export function useOrderEngine() {
         }
 
         return failedSlices === 0
-    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
+    }, [getQuote, getBestQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // SMART MARKET ORDER (Chunked + Randomized Concurrent)
@@ -877,16 +990,18 @@ export function useOrderEngine() {
 
         const deadline = Math.floor(Date.now() / 1000) + 600
 
-        // Get spot price for price impact calculation
-        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals)
+        // Get total expected output AND BEST FEE TIER
+        const { amountOut: totalExpectedQuote, feeTier } = await getBestQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
+
+        if (totalExpectedQuote === '0') throw new Error('No liquidity found for Smart Market trade')
+
+        // Get spot price for price impact calculation using the found fee
+        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals, feeTier)
         const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
 
-        // Get total expected output
-        const totalExpectedQuote = await getQuote(tokenIn.address, tokenOut.address, aggregateTotal, tokenIn.decimals, tokenOut.decimals)
+        // Get ONE quote upfront for consistent fill price (using aggregate chunk) with BEST FEE
+        const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateChunkAmount, tokenIn.decimals, tokenOut.decimals, feeTier)
 
-        // Get ONE quote upfront for consistent fill price (using aggregate chunk)
-        const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateChunkAmount, tokenIn.decimals, tokenOut.decimals)
-        const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
 
         updateOrderState({
             expectedAmountOut: totalExpectedQuote,
@@ -911,16 +1026,35 @@ export function useOrderEngine() {
             chunkPromises.push(
                 sleep(jitterMs).then(async () => {
                     if (shuffled.length === 1) {
-                        return executeSingleTrade(shuffled[0].addr, tokenIn, tokenOut, shuffled[0].amt, minOut, deadline)
+                        const sQuote = await getQuote(tokenIn.address, tokenOut.address, shuffled[0].amt, tokenIn.decimals, tokenOut.decimals, feeTier)
+                        const sMin = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+                        return executeSingleTrade(shuffled[0].addr, tokenIn, tokenOut, shuffled[0].amt, sMin, deadline, feeTier)
                     } else {
-                        // Execute with customized amounts
+                        const chunkAmts = shuffled.map(c => c.amt)
+
+                        // ALWAYS BATCH logic
+                        let minVal = parseUnits(chunkAmts[0], tokenIn.decimals)
+                        let minAmtStr = chunkAmts[0]
+
+                        for (let i = 1; i < chunkAmts.length; i++) {
+                            const val = parseUnits(chunkAmts[i], tokenIn.decimals)
+                            if (val < minVal) {
+                                minVal = val
+                                minAmtStr = chunkAmts[i]
+                            }
+                        }
+
+                        const sQuote = await getQuote(tokenIn.address, tokenOut.address, minAmtStr, tokenIn.decimals, tokenOut.decimals, feeTier)
+                        const minOutPerTrade = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+
                         return executeBatchTrade(
                             shuffled.map(c => c.addr),
                             tokenIn,
                             tokenOut,
-                            shuffled.map(c => c.amt),
-                            minOut,
-                            deadline
+                            chunkAmts,
+                            minOutPerTrade,
+                            deadline,
+                            feeTier
                         )
                     }
                 })
@@ -988,7 +1122,7 @@ export function useOrderEngine() {
         }
 
         return allSuccess
-    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
+    }, [getQuote, getBestQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // SMART TWAP ORDER (TWAP + Chunking)
@@ -1024,12 +1158,14 @@ export function useOrderEngine() {
         const intervalMs = (durationMinutes * 60 * 1000) / slices
         const deadline = Math.floor(Date.now() / 1000) + (durationMinutes * 60) + 600
 
-        // Get spot price for price impact calculation
-        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals)
-        const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
+        // Get total expected output AND FEE TIER
+        const { amountOut: totalExpectedQuote, feeTier } = await getBestQuote(tokenIn.address, tokenOut.address, totalAmount, tokenIn.decimals, tokenOut.decimals)
 
-        // Get total expected output
-        const totalExpectedQuote = await getQuote(tokenIn.address, tokenOut.address, totalAmount, tokenIn.decimals, tokenOut.decimals)
+        if (totalExpectedQuote === '0') throw new Error('No liquidity found for Smart TWAP trade')
+
+        // Get spot price for price impact calculation
+        const spotQuote = await getQuote(tokenIn.address, tokenOut.address, '1', tokenIn.decimals, tokenOut.decimals, feeTier)
+        const spotPrice = spotQuote !== '0' ? (1 / parseFloat(spotQuote)).toString() : '0'
 
         updateOrderState({
             expectedAmountOut: totalExpectedQuote,
@@ -1066,20 +1202,37 @@ export function useOrderEngine() {
 
                 chunkPromises.push(
                     sleep(jitterMs).then(async () => {
-                        const quote = await getQuote(tokenIn.address, tokenOut.address, aggregateChunkAmount, tokenIn.decimals, tokenOut.decimals)
-                        const minOut = (parseFloat(quote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
-
                         if (shuffled.length === 1) {
-                            return executeSingleTrade(shuffled[0].addr, tokenIn, tokenOut, shuffled[0].amt, minOut, deadline)
+                            // Find quote for this specific single trade
+                            const sQuote = await getQuote(tokenIn.address, tokenOut.address, shuffled[0].amt, tokenIn.decimals, tokenOut.decimals, feeTier)
+                            const sMin = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+                            return executeSingleTrade(shuffled[0].addr, tokenIn, tokenOut, shuffled[0].amt, sMin, deadline, feeTier)
                         } else {
-                            // Execute with randomized client order and specific amounts
+                            // ALWAYS BATCH logic for chunk
+                            // Find minimum amount in this chunk set
+                            let minVal = parseUnits(shuffled[0].amt, tokenIn.decimals)
+                            let minAmtStr = shuffled[0].amt
+
+                            for (let i = 1; i < shuffled.length; i++) {
+                                const val = parseUnits(shuffled[i].amt, tokenIn.decimals)
+                                if (val < minVal) {
+                                    minVal = val
+                                    minAmtStr = shuffled[i].amt
+                                }
+                            }
+
+                            // Calc safe minOut based on smallest trade in the chunk
+                            const sQuote = await getQuote(tokenIn.address, tokenOut.address, minAmtStr, tokenIn.decimals, tokenOut.decimals, feeTier)
+                            const minOutPerTrade = (parseFloat(sQuote) * (1 - slippage / 100)).toFixed(tokenOut.decimals)
+
                             return executeBatchTrade(
                                 shuffled.map(c => c.addr),
                                 tokenIn,
                                 tokenOut,
                                 shuffled.map(c => c.amt),
-                                minOut,
-                                deadline
+                                minOutPerTrade,
+                                deadline,
+                                feeTier
                             )
                         }
                     })
@@ -1158,7 +1311,7 @@ export function useOrderEngine() {
         }
 
         return failedChunks === 0
-    }, [getQuote, executeSingleTrade, executeBatchTrade, updateOrderState])
+    }, [getQuote, getBestQuote, executeSingleTrade, executeBatchTrade, updateOrderState, calculateOrderAmounts])
 
     // -------------------------------------------------------------------------
     // MAIN EXECUTE FUNCTION
@@ -1239,7 +1392,7 @@ export function useOrderEngine() {
         }
 
         return finalState
-    }, [executeMarketOrder, executeTWAPOrder, executeSmartMarketOrder, executeSmartTWAPOrder, updateOrderState, calculateOrderAmounts])
+    }, [executeMarketOrder, executeTWAPOrder, executeSmartMarketOrder, executeSmartTWAPOrder, updateOrderState])
 
     // -------------------------------------------------------------------------
     // CANCEL ORDER
